@@ -1,0 +1,2572 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+// ══════════════════════════════════════════════════════
+//  SUPABASE CONFIGURATION
+//  Ganti SUPABASE_URL dan SUPABASE_ANON_KEY dengan
+//  nilai dari: Supabase Dashboard → Settings → API
+// ══════════════════════════════════════════════════════
+const SUPABASE_URL      = 'https://YOUR_PROJECT_ID.supabase.co';
+const SUPABASE_ANON_KEY = 'YOUR_ANON_PUBLIC_KEY';
+
+const _sb = (SUPABASE_URL.includes('YOUR_PROJECT_ID'))
+  ? null  // belum dikonfigurasi — pakai data lokal
+  : supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// ══════════════════════════════════════════════════════
+//  API LAYER — semua operasi DB lewat sini
+//  Jika _sb null (offline/demo), fallback ke DB lokal
+// ══════════════════════════════════════════════════════
+const API = {
+
+  async login(username, password) {
+    if (!_sb) {
+      const u = DB.users.find(x => x.username===username && x.password===password);
+      return u ? { data: u, error: null } : { data: null, error: 'Invalid credentials' };
+    }
+    const { data, error } = await _sb.from('users')
+      .select('*').eq('username', username).eq('password', password).single();
+    return { data, error };
+  },
+
+  async getPOs(customerId, role) {
+    if (!_sb) {
+      return role==='admin' ? DB.po : DB.po.filter(p=>p.customerId===customerId);
+    }
+    let q = _sb.from('purchase_orders').select('*').order('created_at', {ascending:false});
+    if (role !== 'admin') q = q.eq('customer_id', customerId);
+    const { data, error } = await q;
+    return data || [];
+  },
+
+  async createPO(payload) {
+    if (!_sb) return DB.createPO(payload);
+    const noDoc = await this.nextNumber('po');
+    const row = {
+      no_po: payload.noPO || noDoc,
+      customer_id: DB.session.id,
+      customer_name: DB.session.name,
+      tanggal_po: payload.tanggalPO,
+      product: payload.product,
+      tonase: payload.tonase,
+      harga: payload.harga,
+      lokasi: payload.lokasi,
+      catatan: payload.catatan,
+      status: 'pending'
+    };
+    const { data, error } = await _sb.from('purchase_orders').insert(row).select().single();
+    if (error) throw error;
+    return data;
+  },
+
+  async getSOs(customerId, role) {
+    if (!_sb) return role==='admin' ? DB.so : DB.so.filter(s=>s.customerId===customerId);
+    let q = _sb.from('sales_orders').select('*').order('created_at', {ascending:false});
+    if (role !== 'admin') q = q.eq('customer_id', customerId);
+    const { data } = await q;
+    return data || [];
+  },
+
+  async createSO(poId) {
+    if (!_sb) return DB.createSO(poId);
+    const po = await _sb.from('purchase_orders').select('*').eq('id', poId).single();
+    if (po.error) throw po.error;
+    const p = po.data;
+    const noDoc = await this.nextNumber('so');
+    const row = {
+      no_so: noDoc, po_id: poId,
+      customer_id: p.customer_id, customer_name: p.customer_name,
+      product: p.product, tonase_total: p.tonase, tonase_sisa: p.tonase,
+      harga: p.harga, lokasi: p.lokasi, status: 'pending'
+    };
+    const { data, error } = await _sb.from('sales_orders').insert(row).select().single();
+    if (error) throw error;
+    await _sb.from('purchase_orders').update({ so_id: data.id, status: 'so-created' }).eq('id', poId);
+    return data;
+  },
+
+  async updateSO(soId, action, catatan) {
+    if (!_sb) return DB.updateSO(soId, action, catatan);
+    const updates = action === 'approve'
+      ? { status: 'released', catatan, approved_at: new Date().toISOString().split('T')[0], approved_by: DB.session?.name }
+      : { status: 'rejected', catatan };
+    const { data, error } = await _sb.from('sales_orders').update(updates).eq('id', soId).select().single();
+    if (error) throw error;
+    const poStatus = action === 'approve' ? 'approved' : 'rejected';
+    await _sb.from('purchase_orders').update({ status: poStatus }).eq('so_id', soId);
+    return data;
+  },
+
+  async getDRs(customerId, role) {
+    if (!_sb) return role==='admin' ? DB.dr : DB.dr.filter(d=>d.customerId===customerId);
+    let q = _sb.from('delivery_requests').select('*').order('created_at', {ascending:false});
+    if (role !== 'admin') q = q.eq('customer_id', customerId);
+    const { data } = await q;
+    return data || [];
+  },
+
+  async createDR(payload) {
+    if (!_sb) return DB.createDR(payload);
+    const noDoc = await this.nextNumber('dr');
+    const so = await _sb.from('sales_orders').select('*').eq('id', payload.soId).single();
+    const row = {
+      no_dr: noDoc, so_id: payload.soId,
+      customer_id: DB.session.id, customer_name: DB.session.name,
+      product: so.data?.product, so_tonase_total: so.data?.tonase_total,
+      tanggal_kirim: payload.tanggalKirim, tonase: payload.tonase,
+      tujuan: payload.tujuan, instruksi: payload.instruksi, status: 'pending'
+    };
+    const { data, error } = await _sb.from('delivery_requests').insert(row).select().single();
+    if (error) throw error;
+    return data;
+  },
+
+  async getDOs(customerId, role) {
+    if (!_sb) return role==='admin' ? DB.doList : DB.doList.filter(d=>d.customerId===customerId);
+    let q = _sb.from('delivery_orders').select('*').order('created_at', {ascending:false});
+    if (role !== 'admin') q = q.eq('customer_id', customerId);
+    const { data } = await q;
+    return data || [];
+  },
+
+  async createDO(payload) {
+    if (!_sb) return DB.createDO(payload);
+    const dr = await _sb.from('delivery_requests').select('*').eq('id', payload.drId).single();
+    const d = dr.data;
+    const noDoc = await this.nextNumber('do');
+    const row = {
+      no_do: noDoc, dr_id: payload.drId, so_id: d.so_id,
+      customer_id: d.customer_id, customer_name: d.customer_name,
+      product: d.product, tonase: d.tonase, tujuan: d.tujuan,
+      no_kendaraan: payload.noKendaraan, driver: payload.driver,
+      tel_driver: payload.telDriver, terminal: payload.terminal,
+      status: 'posted', track_status: 'loading',
+      posted_at: new Date().toISOString().split('T')[0]
+    };
+    const { data, error } = await _sb.from('delivery_orders').insert(row).select().single();
+    if (error) throw error;
+    await _sb.from('delivery_requests').update({ status: 'do-created', do_id: data.id }).eq('id', payload.drId);
+    await _sb.from('sales_orders').rpc || await _sb.from('sales_orders')
+      .update({ tonase_sisa: _sb.rpc ? undefined : null }).eq('id', d.so_id);
+    return data;
+  },
+
+  async updateDOTracking(doId, trackStatus) {
+    if (!_sb) return DB.updateTracking(doId, trackStatus);
+    const { data, error } = await _sb.from('delivery_orders')
+      .update({ track_status: trackStatus }).eq('id', doId).select().single();
+    if (error) throw error;
+    return data;
+  },
+
+  async getReceipts(customerId, role) {
+    if (!_sb) return role==='admin' ? DB.receipts : DB.receipts.filter(r=>r.customerId===customerId);
+    let q = _sb.from('receipts').select('*').order('created_at', {ascending:false});
+    if (role !== 'admin') q = q.eq('customer_id', customerId);
+    const { data } = await q;
+    return data || [];
+  },
+
+  async createReceipt(payload, sigDataUrl) {
+    if (!_sb) return DB.createReceipt(payload, sigDataUrl);
+    const noDoc  = await this.nextNumber('rcp');
+    const noInv  = await this.nextNumber('inv');
+    const row = {
+      no_receipt: noDoc, no_invoice: noInv,
+      do_id: payload.doId, customer_id: DB.session.id, customer_name: DB.session.name,
+      tanggal: payload.tanggal, nama_penerima: payload.namaPenerima,
+      jabatan: payload.jabatan, timbangan: payload.timbangan,
+      kondisi: payload.kondisi, segel: payload.segel, catatan: payload.catatan,
+      sig_data_url: sigDataUrl, verify_status: 'pending'
+    };
+    const { data, error } = await _sb.from('receipts').insert(row).select().single();
+    if (error) throw error;
+    await _sb.from('delivery_orders')
+      .update({ status: 'delivered', track_status: 'delivered', receipt_id: data.id })
+      .eq('id', payload.doId);
+    return data;
+  },
+
+  async verifyReceipt(rcpId, action, catatan) {
+    if (!_sb) return DB.verifyReceipt(rcpId, action, catatan);
+    const updates = {
+      verify_status: action === 'approve' ? 'verified' : 'rejected',
+      verify_catatan: catatan,
+      verified_at: new Date().toISOString().split('T')[0],
+      verified_by: DB.session?.name
+    };
+    const { data, error } = await _sb.from('receipts').update(updates).eq('id', rcpId).select().single();
+    if (error) throw error;
+    if (action === 'approve') {
+      await _sb.from('delivery_orders').update({ status: 'closed' }).eq('receipt_id', rcpId);
+    }
+    return data;
+  },
+
+  async nextNumber(prefix) {
+    if (!_sb) return DB.nextId(prefix);
+    const { data, error } = await _sb.rpc('get_next_number', { doc_prefix: prefix });
+    if (error || !data) {
+      const y = new Date().getFullYear();
+      return `${prefix.toUpperCase()}-${y}-${String(Math.floor(Math.random()*9000)+1000)}`;
+    }
+    return data;
+  }
+};
+
+// Tampilkan banner jika Supabase belum dikonfigurasi
+window.addEventListener('DOMContentLoaded', () => {
+  if (!_sb) {
+    const b = document.createElement('div');
+    b.id = 'supabase-banner';
+    b.innerHTML = `<span>⚡ Mode Offline — Data disimpan lokal (demo). Untuk koneksi Supabase, isi SUPABASE_URL & SUPABASE_ANON_KEY di konfigurasi.</span>
+      <a href="https://supabase.com/dashboard" target="_blank" style="color:#fff;text-decoration:underline;margin-left:12px;">Buka Supabase →</a>`;
+    b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:var(--amber,#b45309);color:#fff;font-size:11px;padding:8px 20px;display:flex;align-items:center;gap:8px;';
+    document.body.appendChild(b);
+  }
+});
+</script>
+
+<title>DMK Customer Portal</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,300&display=swap');
+
+:root {
+  --navy:         #0a0f1e;
+  --navy-mid:     #111827;
+  --navy-light:   #1a2540;
+  --navy-card:    rgba(17,24,39,0.85);
+  --navy-border:  #1e2d4a;
+  --blue:         #006ceb;
+  --blue-light:   #3d8ff0;
+  --blue-dim:     rgba(0,108,235,0.14);
+  --blue-dim2:    rgba(0,108,235,0.07);
+  --blue-border:  rgba(0,108,235,0.35);
+  --white:        #f5f3ee;
+  --white-dim:    rgba(245,243,238,0.72);
+  --white-faint:  rgba(245,243,238,0.10);
+  --muted:        #8a90a0;
+  --mid:          #c0c8d8;
+  --green:        #1a7a4a;
+  --green-dim:    rgba(26,122,74,0.18);
+  --green-border: rgba(26,122,74,0.4);
+  --red:          #9b2c2c;
+  --red-dim:      rgba(155,44,44,0.18);
+  --red-border:   rgba(155,44,44,0.4);
+  --amber:        #b45309;
+  --amber-dim:    rgba(180,83,9,0.18);
+  --r:            var(--border-radius, 4px);
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; font-size: 16px; }
+body {
+  font-family: 'DM Sans', sans-serif;
+  background: var(--navy);
+  color: var(--white);
+  min-height: 100vh;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: var(--navy); }
+::-webkit-scrollbar-thumb { background: var(--navy-border); }
+
+a { color: inherit; text-decoration: none; }
+input, select, textarea, button { font-family: 'DM Sans', sans-serif; }
+input[type="date"] { color-scheme: dark; }
+
+/* ── PAGE SHELL ── */
+.page { display: none; min-height: 100vh; }
+.page.active { display: flex; flex-direction: column; }
+
+/* ── NAV ── */
+.topnav {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 200;
+  height: 64px;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 36px;
+  background: rgba(10,15,30,0.94);
+  border-bottom: 1px solid var(--navy-border);
+  backdrop-filter: blur(14px);
+}
+.nav-logo { display: flex; align-items: center; gap: 12px; cursor: pointer; transition: opacity .2s; }
+.nav-logo:hover { opacity: 0.8; }
+.nav-logo-mark {
+  width: 34px; height: 34px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.nav-brand { line-height: 1.2; }
+.nav-brand-name { font-size: 12px; font-weight: 600; letter-spacing: 2px; text-transform: uppercase; color: var(--white); }
+.nav-brand-sub  { font-size: 9px; letter-spacing: 1.8px; text-transform: uppercase; color: var(--muted); }
+.nav-center { display: flex; gap: 28px; }
+.nav-link {
+  font-size: 11px; font-weight: 500; letter-spacing: 1.5px; text-transform: uppercase;
+  color: var(--muted); cursor: pointer; padding: 4px 0;
+  border-bottom: 1.5px solid transparent;
+  transition: color .2s, border-color .2s;
+}
+.nav-link:hover { color: var(--white-dim); }
+.nav-link.active { color: var(--blue); border-bottom-color: var(--blue); }
+.nav-right { display: flex; align-items: center; gap: 14px; }
+.nav-role-badge {
+  font-size: 10px; font-weight: 600; letter-spacing: 1.2px; text-transform: uppercase;
+  padding: 4px 10px; border: 1px solid var(--blue-border);
+  background: var(--blue-dim); color: var(--blue-light);
+}
+.nav-user { font-size: 12px; color: var(--muted); }
+.nav-avatar {
+  width: 32px; height: 32px; border-radius: 50%;
+  background: var(--blue-dim); border: 1.5px solid var(--blue);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 600; color: var(--blue); cursor: pointer;
+}
+.nav-logout {
+  font-size: 11px; font-weight: 500; letter-spacing: 1px; text-transform: uppercase;
+  color: var(--muted); cursor: pointer; padding: 6px 12px;
+  border: 1px solid var(--navy-border); background: transparent;
+  transition: color .2s, border-color .2s;
+}
+.nav-logout:hover { color: var(--white); border-color: var(--muted); }
+
+/* ── MAIN CONTENT ── */
+.main-content { padding-top: 64px; flex: 1; }
+
+/* ── PAGE HEADER ── */
+.page-header {
+  padding: 48px 40px 32px;
+  border-bottom: 1px solid var(--navy-border);
+  background: linear-gradient(180deg, rgba(0,108,235,0.04) 0%, transparent 100%);
+}
+.page-eyebrow {
+  display: inline-flex; align-items: center; gap: 10px;
+  font-size: 10px; font-weight: 600; letter-spacing: 2.5px; text-transform: uppercase;
+  color: var(--blue); margin-bottom: 10px;
+}
+.page-eyebrow::before { content: ''; width: 20px; height: 1px; background: var(--blue); }
+.page-title {
+  font-family: 'Playfair Display', serif;
+  font-size: clamp(24px, 3.5vw, 38px); font-weight: 700; line-height: 1.1;
+  color: var(--white); margin-bottom: 8px;
+}
+.page-sub { font-size: 13px; color: var(--muted); line-height: 1.6; }
+
+/* ── CONTAINERS ── */
+.container { max-width: 1080px; margin: 0 auto; padding: 32px 40px; }
+.container-sm { max-width: 720px; margin: 0 auto; padding: 32px 40px; }
+
+/* ── GRID ── */
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+
+/* ── CARDS ── */
+.card {
+  background: var(--navy-card);
+  border: 1px solid var(--navy-border);
+  padding: 24px;
+  transition: border-color .2s;
+}
+.card:hover { border-color: rgba(0,108,235,0.25); }
+.card-title {
+  font-size: 11px; font-weight: 600; letter-spacing: 2px; text-transform: uppercase;
+  color: var(--blue); margin-bottom: 16px;
+  padding-bottom: 12px; border-bottom: 1px solid var(--navy-border);
+}
+
+/* ── STAT CARDS ── */
+.stat-card {
+  background: rgba(0,108,235,0.07);
+  border: 1px solid var(--blue-border);
+  padding: 20px 20px 16px;
+  text-align: center;
+}
+.stat-num {
+  font-family: 'Playfair Display', serif;
+  font-size: 32px; font-weight: 700; color: var(--blue);
+  line-height: 1;
+}
+.stat-lbl { font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); margin-top: 6px; }
+
+/* ── FORM ELEMENTS ── */
+.form-group { margin-bottom: 16px; }
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.form-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+.form-label {
+  display: block; font-size: 10px; font-weight: 600; letter-spacing: 1.5px; text-transform: uppercase;
+  color: var(--muted); margin-bottom: 6px;
+}
+.form-label span { color: #f87171; margin-left: 2px; }
+.form-input, .form-select, .form-textarea {
+  width: 100%;
+  background: rgba(10,15,30,0.8);
+  border: 1px solid var(--navy-border);
+  color: var(--white);
+  font-size: 13px; font-weight: 400;
+  padding: 10px 14px;
+  outline: none;
+  transition: border-color .2s;
+  appearance: none;
+}
+.form-input:focus, .form-select:focus, .form-textarea:focus {
+  border-color: var(--blue);
+}
+.form-input::placeholder, .form-textarea::placeholder { color: var(--muted); }
+.form-select { cursor: pointer; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%238a90a0' stroke-width='1.5' fill='none'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 32px; }
+.form-select option { background: var(--navy-mid); }
+.form-textarea { resize: vertical; min-height: 80px; line-height: 1.6; }
+.form-hint { font-size: 11px; color: var(--muted); margin-top: 5px; }
+.form-error { font-size: 11px; color: #f87171; margin-top: 5px; display: none; }
+.form-input.error, .form-select.error { border-color: #f87171; }
+
+/* ── FIELD DISPLAY (read-only) ── */
+.field-box {
+  background: rgba(10,15,30,0.7);
+  border: 1px solid var(--navy-border);
+  padding: 12px 14px;
+}
+.field-lbl { font-size: 10px; font-weight: 600; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
+.field-val { font-size: 13px; font-weight: 500; color: var(--white); }
+
+/* ── BUTTONS ── */
+.btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 10px 22px;
+  font-size: 11px; font-weight: 600; letter-spacing: 1.5px; text-transform: uppercase;
+  border: none; cursor: pointer;
+  transition: opacity .15s, transform .12s;
+}
+.btn:hover { opacity: .88; transform: translateY(-1px); }
+.btn:active { transform: translateY(0); }
+.btn:disabled { opacity: .4; cursor: not-allowed; transform: none; }
+.btn-primary  { background: var(--blue); color: #fff; }
+.btn-success  { background: var(--green); color: #fff; }
+.btn-danger   { background: var(--red); color: #fff; }
+.btn-ghost    { background: transparent; color: var(--white-dim); border: 1px solid var(--navy-border); }
+.btn-ghost:hover { border-color: var(--muted); }
+.btn-outline  { background: transparent; color: var(--blue); border: 1.5px solid var(--blue); }
+.btn-sm { padding: 6px 14px; font-size: 10px; }
+.btn-lg { padding: 13px 32px; font-size: 12px; }
+.btn-group { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 20px; }
+
+/* ── BADGE / STATUS ── */
+.badge {
+  display: inline-block;
+  font-size: 10px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase;
+  padding: 3px 10px; border: 1px solid;
+}
+.badge-pending { color: #fbbf24; border-color: rgba(251,191,36,.4); background: rgba(251,191,36,.08); }
+.badge-approved { color: #34d399; border-color: rgba(52,211,153,.4); background: rgba(52,211,153,.08); }
+.badge-rejected { color: #f87171; border-color: rgba(248,113,113,.4); background: rgba(248,113,113,.08); }
+.badge-released { color: var(--blue-light); border-color: var(--blue-border); background: var(--blue-dim); }
+.badge-posted   { color: #34d399; border-color: rgba(52,211,153,.4); background: rgba(52,211,153,.08); }
+.badge-transit  { color: #fbbf24; border-color: rgba(251,191,36,.4); background: rgba(251,191,36,.08); }
+.badge-delivered { color: #34d399; border-color: rgba(52,211,153,.4); background: rgba(52,211,153,.08); }
+.badge-closed   { color: var(--muted); border-color: var(--navy-border); background: transparent; }
+.badge-info     { color: var(--blue-light); border-color: var(--blue-border); background: var(--blue-dim); }
+
+/* ── TABLE ── */
+.tbl-wrap { overflow-x: auto; }
+.tbl {
+  width: 100%; border-collapse: collapse;
+  font-size: 13px;
+}
+.tbl th {
+  font-size: 10px; font-weight: 600; letter-spacing: 1.5px; text-transform: uppercase;
+  color: var(--muted); padding: 10px 14px;
+  border-bottom: 1px solid var(--navy-border);
+  text-align: left; white-space: nowrap;
+}
+.tbl td {
+  padding: 13px 14px;
+  border-bottom: 1px solid rgba(30,45,74,.5);
+  vertical-align: middle;
+  color: var(--white-dim);
+}
+.tbl tr:last-child td { border-bottom: none; }
+.tbl tr:hover td { background: rgba(0,108,235,.04); }
+.tbl-actions { display: flex; gap: 8px; }
+
+/* ── TABS ── */
+.tabs { display: flex; gap: 0; border-bottom: 1px solid var(--navy-border); margin-bottom: 28px; }
+.tab-btn {
+  padding: 11px 24px;
+  font-size: 11px; font-weight: 600; letter-spacing: 1.5px; text-transform: uppercase;
+  color: var(--muted); cursor: pointer; border: none; background: transparent;
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+  transition: color .2s, border-color .2s;
+}
+.tab-btn:hover { color: var(--white-dim); }
+.tab-btn.active { color: var(--blue); border-bottom-color: var(--blue); }
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+/* ── ALERTS / INFO ── */
+.alert {
+  padding: 12px 16px;
+  border: 1px solid;
+  display: flex; align-items: flex-start; gap: 10px;
+  font-size: 12px; line-height: 1.6; margin-bottom: 16px;
+}
+.alert-info  { border-color: var(--blue-border); background: var(--blue-dim); color: var(--blue-light); }
+.alert-warn  { border-color: rgba(251,191,36,.35); background: rgba(251,191,36,.08); color: #fbbf24; }
+.alert-success { border-color: var(--green-border); background: var(--green-dim); color: #34d399; }
+.alert-error { border-color: var(--red-border); background: var(--red-dim); color: #f87171; }
+.alert-icon { font-size: 14px; flex-shrink: 0; margin-top: 1px; }
+
+/* ── STEP TRACKER ── */
+.step-tracker { display: flex; align-items: center; margin: 24px 0; }
+.st-node { display: flex; flex-direction: column; align-items: center; flex: 1; }
+.st-dot {
+  width: 28px; height: 28px; border: 2px solid;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 700; z-index: 1;
+}
+.st-done   { border-color: var(--blue); color: var(--blue); background: var(--blue-dim); }
+.st-active { border-color: #34d399; color: #34d399; background: rgba(52,211,153,.12); }
+.st-pending{ border-color: var(--navy-border); color: var(--muted); background: transparent; }
+.st-lbl { font-size: 10px; color: var(--muted); margin-top: 6px; text-align: center; max-width: 64px; line-height: 1.4; }
+.st-line { height: 2px; flex: 1; margin: 0 -2px; margin-bottom: 26px; }
+.st-line-done { background: var(--blue); }
+.st-line-pending { background: var(--navy-border); }
+
+/* ── SIGNATURE ── */
+.sig-wrap {
+  border: 1px dashed rgba(0,108,235,.4);
+  height: 100px;
+  position: relative; overflow: hidden; cursor: crosshair;
+  background: rgba(10,15,30,.6);
+}
+.sig-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.sig-hint {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; letter-spacing: 1.2px; text-transform: uppercase; color: var(--muted);
+  pointer-events: none;
+}
+
+/* ── TOAST ── */
+#toast {
+  position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%);
+  background: var(--blue); color: #fff;
+  font-size: 11px; font-weight: 600; letter-spacing: 1.5px; text-transform: uppercase;
+  padding: 12px 24px; z-index: 9999;
+  opacity: 0; transition: opacity .25s; pointer-events: none;
+  white-space: nowrap;
+}
+#toast.show { opacity: 1; }
+
+/* ── MODAL ── */
+.modal-bg {
+  position: fixed; inset: 0; z-index: 500;
+  background: rgba(10,15,30,.85);
+  display: none; align-items: center; justify-content: center;
+  padding: 20px;
+}
+.modal-bg.open { display: flex; }
+.modal-box {
+  background: var(--navy-mid);
+  border: 1px solid var(--navy-border);
+  width: 100%; max-width: 540px; max-height: 90vh; overflow-y: auto;
+  padding: 28px;
+}
+.modal-header {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 20px; padding-bottom: 14px; border-bottom: 1px solid var(--navy-border);
+}
+.modal-title { font-family: 'Playfair Display', serif; font-size: 20px; font-weight: 700; color: var(--white); }
+.modal-close { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 18px; line-height: 1; }
+.modal-close:hover { color: var(--white); }
+
+/* ── EMPTY STATE ── */
+.empty-state {
+  text-align: center; padding: 60px 20px; color: var(--muted);
+}
+.empty-icon { font-size: 32px; margin-bottom: 12px; opacity: .4; }
+.empty-text { font-size: 13px; line-height: 1.6; }
+
+/* ── DIVIDER ── */
+.divider { height: 1px; background: linear-gradient(90deg, transparent, var(--navy-border), transparent); margin: 28px 0; }
+
+/* ── LOGIN PAGE ── */
+.login-wrap {
+  min-height: 100vh;
+  display: flex; align-items: center; justify-content: center;
+  background:
+    radial-gradient(ellipse 60% 50% at 80% 50%, rgba(0,108,235,.05) 0%, transparent 70%),
+    var(--navy);
+  padding: 20px;
+}
+.login-card {
+  width: 100%; max-width: 420px;
+  background: var(--navy-card);
+  border: 1px solid var(--navy-border);
+  padding: 40px;
+}
+.login-logo { text-align: center; margin-bottom: 32px; }
+.login-logo-mark {
+  width: 56px; height: 56px;
+  display: flex; align-items: center; justify-content: center;
+  margin: 0 auto 14px;
+}
+.login-logo-name { font-size: 14px; font-weight: 600; letter-spacing: 2.5px; text-transform: uppercase; }
+.login-logo-sub { font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: var(--muted); margin-top: 3px; }
+.login-title { font-family: 'Playfair Display', serif; font-size: 22px; font-weight: 700; margin-bottom: 6px; }
+.login-sub { font-size: 12px; color: var(--muted); margin-bottom: 24px; }
+.login-role-select { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
+.role-card {
+  padding: 14px; border: 1.5px solid var(--navy-border);
+  cursor: pointer; text-align: center;
+  transition: border-color .2s, background .2s;
+}
+.role-card:hover { border-color: rgba(0,108,235,.4); }
+.role-card.selected { border-color: var(--blue); background: var(--blue-dim); }
+.role-card-icon { font-size: 20px; margin-bottom: 6px; }
+.role-card-name { font-size: 11px; font-weight: 600; letter-spacing: 1.2px; text-transform: uppercase; }
+.role-card-desc { font-size: 10px; color: var(--muted); margin-top: 3px; }
+
+/* ── RESPONSIVE ── */
+@media (max-width: 768px) {
+  .topnav { padding: 0 16px; }
+  .nav-center { display: none; }
+  .page-header { padding: 32px 20px 20px; }
+  .container, .container-sm { padding: 20px; }
+  .grid-2, .form-row { grid-template-columns: 1fr; }
+  .grid-3, .grid-4, .form-row-3 { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 480px) {
+  .grid-3, .grid-4, .form-row-3 { grid-template-columns: 1fr; }
+}
+
+/* ── UTILITY ── */
+.col-blue   { color: var(--blue-light); }
+.col-green  { color: #34d399; }
+.col-amber  { color: #fbbf24; }
+.col-red    { color: #f87171; }
+.col-muted  { color: var(--muted); }
+.fw-500 { font-weight: 500; }
+.fw-600 { font-weight: 600; }
+.mt-8  { margin-top: 8px; }
+.mt-16 { margin-top: 16px; }
+.mt-24 { margin-top: 24px; }
+.mb-8  { margin-bottom: 8px; }
+.mb-16 { margin-bottom: 16px; }
+.mb-24 { margin-bottom: 24px; }
+.text-right { text-align: right; }
+.text-center { text-align: center; }
+.flex { display: flex; }
+.flex-between { display: flex; justify-content: space-between; align-items: center; }
+.flex-end { display: flex; justify-content: flex-end; }
+.gap-8  { gap: 8px; }
+.gap-12 { gap: 12px; }
+.gap-16 { gap: 16px; }
+.font-serif { font-family: 'Playfair Display', serif; }
+.fs-12 { font-size: 12px; }
+.fs-13 { font-size: 13px; }
+
+</style>
+</head>
+<body>
+
+<!-- ════════════════════════════════════════════
+     LOGIN PAGE
+════════════════════════════════════════════ -->
+<div class="page active" id="page-login">
+  <div class="login-wrap">
+    <div class="login-card">
+      <div class="login-logo">
+        <div class="login-logo-mark"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" style="width:56px;height:56px;"><path fill="#006ceb" d="M27.24,51.76h36.45c3.35,0,6.07,2.72,6.07,6.07v17.21s0,11.66,0,11.66v7.58c0,3.35,2.72,6.07,6.07,6.07h18.22c3.35,0,6.07-2.72,6.07-6.07v-7.58s0-11.66,0-11.66V27.47c0-3.35,2.72-6.07,6.07-6.07h66.82c3.35,0,6.07,2.72,6.07,6.07v66.82c0,3.35-2.72,6.07-6.07,6.07h-62.1s-4.72,0-4.72,0c-3.35,0-6.07,2.72-6.07,6.07v18.22c0,3.35,2.72,6.07,6.07,6.07h36.45c3.35,0,6.07,2.72,6.07,6.07v36.45c0,3.35-2.72,6.07-6.07,6.07h-36.45c-3.35,0-6.07-2.72-6.07-6.07v-18.22s0-13.04,0-13.04v-5.18c0-3.35-2.72-6.07-6.07-6.07h-18.22c-3.35,0-6.07,2.72-6.07,6.07v5.18s0,13.04,0,13.04c0,3.35-2.72,6.07-6.07,6.07h-18.22c-3.35,0-6.07-2.72-6.07-6.07v-18.22c0-3.35,2.72-6.07,6.07-6.07h18.23c3.35,0,6.07-2.72,6.07-6.07v-18.22c0-3.35-2.72-6.07-6.07-6.07h-5.29s-31.15,0-31.15,0c-3.35,0-6.07-2.72-6.07-6.07v-36.45c0-3.35,2.72-6.07,6.07-6.07Z"/></svg></div>
+        <div class="login-logo-name">DMK Group</div>
+        <div class="login-logo-sub">Customer Portal</div>
+      </div>
+      <div class="login-title">Selamat Datang</div>
+      <p class="login-sub">Pilih peran dan masukkan kredensial Anda untuk melanjutkan.</p>
+
+      <div class="login-role-select" id="roleSelect">
+        <div class="role-card selected" data-role="customer" onclick="selectRole(this)">
+          <div class="role-card-icon">🏢</div>
+          <div class="role-card-name">Customer</div>
+          <div class="role-card-desc">Input PO & tracking pengiriman</div>
+        </div>
+        <div class="role-card" data-role="admin" onclick="selectRole(this)">
+          <div class="role-card-icon">⚙️</div>
+          <div class="role-card-name">Administrator</div>
+          <div class="role-card-desc">Verifikasi SO, DO & signature</div>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Username</label>
+        <input class="form-input" id="loginUser" placeholder="Masukkan username"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Password</label>
+        <input class="form-input" id="loginPass" type="password" placeholder="Masukkan password"/>
+        <div class="form-error" id="loginErr">Username atau password salah.</div>
+      </div>
+      <div class="alert alert-info" style="margin-bottom:16px;">
+        <span class="alert-icon">ℹ</span>
+        <span>Demo: customer1 / demo123 &nbsp;|&nbsp; admin / admin123</span>
+      </div>
+      <button class="btn btn-primary btn-lg" style="width:100%;" onclick="doLogin()">Masuk ke Portal</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     CUSTOMER PAGES
+════════════════════════════════════════════ -->
+<div class="page" id="page-customer">
+  <!-- NAV -->
+  <nav class="topnav" id="custNav">
+    <div class="nav-logo" onclick="custNav('po')" title="Kembali ke halaman utama">
+      <div class="nav-logo-mark"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" style="width:34px;height:34px;flex-shrink:0;"><path fill="#006ceb" d="M27.24,51.76h36.45c3.35,0,6.07,2.72,6.07,6.07v17.21s0,11.66,0,11.66v7.58c0,3.35,2.72,6.07,6.07,6.07h18.22c3.35,0,6.07-2.72,6.07-6.07v-7.58s0-11.66,0-11.66V27.47c0-3.35,2.72-6.07,6.07-6.07h66.82c3.35,0,6.07,2.72,6.07,6.07v66.82c0,3.35-2.72,6.07-6.07,6.07h-62.1s-4.72,0-4.72,0c-3.35,0-6.07,2.72-6.07,6.07v18.22c0,3.35,2.72,6.07,6.07,6.07h36.45c3.35,0,6.07,2.72,6.07,6.07v36.45c0,3.35-2.72,6.07-6.07,6.07h-36.45c-3.35,0-6.07-2.72-6.07-6.07v-18.22s0-13.04,0-13.04v-5.18c0-3.35-2.72-6.07-6.07-6.07h-18.22c-3.35,0-6.07,2.72-6.07,6.07v5.18s0,13.04,0,13.04c0,3.35-2.72,6.07-6.07,6.07h-18.22c-3.35,0-6.07-2.72-6.07-6.07v-18.22c0-3.35,2.72-6.07,6.07-6.07h18.23c3.35,0,6.07-2.72,6.07-6.07v-18.22c0-3.35-2.72-6.07-6.07-6.07h-5.29s-31.15,0-31.15,0c-3.35,0-6.07-2.72-6.07-6.07v-36.45c0-3.35,2.72-6.07,6.07-6.07Z"/></svg></div>
+      <div class="nav-brand">
+        <div class="nav-brand-name">DMK Group</div>
+        <div class="nav-brand-sub">Customer Portal</div>
+      </div>
+    </div>
+    <div class="nav-center">
+      <span class="nav-link active" id="cnl-po" onclick="custNav('po')">Purchase Order</span>
+      <span class="nav-link" id="cnl-so" onclick="custNav('so')">Sales Order</span>
+      <span class="nav-link" id="cnl-dr" onclick="custNav('dr')">Permintaan Kirim</span>
+      <span class="nav-link" id="cnl-tracking" onclick="custNav('tracking')">Tracking</span>
+      <span class="nav-link" id="cnl-receipt" onclick="custNav('receipt')">Penerimaan</span>
+    </div>
+    <div class="nav-right">
+      <span class="nav-role-badge">Customer</span>
+      <span class="nav-user" id="custNavName"></span>
+      <div class="nav-avatar" id="custNavAvatar"></div>
+      <button class="nav-logout" onclick="doLogout()">Keluar</button>
+    </div>
+  </nav>
+
+  <div class="main-content">
+    <!-- C: DASHBOARD -->
+    <div class="tab-panel" id="csub-dashboard">
+      <div class="page-header">
+        <div class="page-eyebrow">Overview</div>
+        <h1 class="page-title">Dashboard</h1>
+        <p class="page-sub" id="c-dash-greeting"></p>
+      </div>
+      <div class="container">
+        <div class="grid-4 mb-24" id="c-stats"></div>
+        <div class="grid-2">
+          <div class="card">
+            <div class="card-title">Purchase Order Terbaru</div>
+            <div id="c-dash-po"></div>
+          </div>
+          <div class="card">
+            <div class="card-title">Status Pengiriman Aktif</div>
+            <div id="c-dash-do"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- C: PO LIST + FORM -->
+    <div class="tab-panel active" id="csub-po">
+      <div class="page-header">
+        <div class="page-eyebrow">Phase 1 — Step 1</div>
+        <h1 class="page-title">Purchase Order</h1>
+        <p class="page-sub">Buat dan pantau Purchase Order aspal Anda.</p>
+      </div>
+      <div class="container">
+        <div class="tabs">
+          <button class="tab-btn active" onclick="tabSwitch('po','list',this)">Daftar PO</button>
+          <button class="tab-btn" onclick="tabSwitch('po','form',this)">+ Buat PO Baru</button>
+        </div>
+        <!-- list -->
+        <div class="tab-panel active" id="po-list">
+          <div class="tbl-wrap"><table class="tbl" id="c-po-tbl">
+            <thead><tr>
+              <th>No. PO</th><th>Tanggal</th><th>Produk</th>
+              <th>Tonase</th><th>Lokasi</th><th>Status</th><th>Aksi</th>
+            </tr></thead>
+            <tbody id="c-po-tbody"></tbody>
+          </table></div>
+        </div>
+        <!-- form -->
+        <div class="tab-panel" id="po-form">
+          <div class="card">
+            <div class="card-title">Form Input Purchase Order</div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">No. PO Customer <span>*</span></label>
+                <input class="form-input" id="po-noPO" placeholder="Contoh: PO-2024-001"/>
+                <div class="form-error" id="err-noPO">Wajib diisi</div>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Tanggal PO <span>*</span></label>
+                <input class="form-input" id="po-tanggal" type="date"/>
+                <div class="form-error" id="err-tanggal">Wajib diisi</div>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Produk <span>*</span></label>
+                <select class="form-select" id="po-product">
+                  <option value="">-- Pilih Produk --</option>
+                  <option value="Aspal Curah Pertamina 60/70">Aspal Curah Pertamina 60/70</option>
+                  <option value="Aspal Curah Pertamina 80/100">Aspal Curah Pertamina 80/100</option>
+                  <option value="Aspal Drum 60/70">Aspal Drum 60/70</option>
+                  <option value="Polymer Modified Asphalt (PMA)">Polymer Modified Asphalt (PMA)</option>
+                </select>
+                <div class="form-error" id="err-product">Wajib dipilih</div>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Total Tonase (Ton) <span>*</span></label>
+                <input class="form-input" id="po-tonase" type="number" min="1" placeholder="Contoh: 500"/>
+                <div class="form-error" id="err-tonase">Wajib diisi</div>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Harga Satuan (Rp/Ton) <span>*</span></label>
+                <input class="form-input" id="po-harga" type="number" placeholder="Contoh: 12500000"/>
+                <div class="form-error" id="err-harga">Wajib diisi</div>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Lokasi Pengiriman <span>*</span></label>
+                <input class="form-input" id="po-lokasi" placeholder="Nama proyek / lokasi tujuan"/>
+                <div class="form-error" id="err-lokasi">Wajib diisi</div>
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Catatan / Spesifikasi Khusus</label>
+              <textarea class="form-textarea" id="po-catatan" placeholder="Contoh: Suhu minimal 150°C, penetrasi 60/70..."></textarea>
+            </div>
+            <div class="btn-group">
+              <button class="btn btn-primary" onclick="submitPO()">Kirim PO</button>
+              <button class="btn btn-ghost" onclick="resetPOForm()">Reset Form</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- C: SO STATUS -->
+    <div class="tab-panel" id="csub-so">
+      <div class="page-header">
+        <div class="page-eyebrow">Phase 1 — Step 2 & 3</div>
+        <h1 class="page-title">Sales Order</h1>
+        <p class="page-sub">Pantau status verifikasi dan release Sales Order dari DMK.</p>
+      </div>
+      <div class="container">
+        <div class="tbl-wrap"><table class="tbl">
+          <thead><tr>
+            <th>No. SO</th><th>Ref. PO</th><th>Produk</th>
+            <th>Tonase</th><th>Sisa</th><th>Status</th><th>Catatan Admin</th>
+          </tr></thead>
+          <tbody id="c-so-tbody"></tbody>
+        </table></div>
+      </div>
+    </div>
+
+    <!-- C: DELIVERY REQUEST -->
+    <div class="tab-panel" id="csub-dr">
+      <div class="page-header">
+        <div class="page-eyebrow">Phase 1 — Step 4</div>
+        <h1 class="page-title">Permintaan Pengiriman</h1>
+        <p class="page-sub">Ajukan permintaan pengiriman parsial dari Sales Order yang sudah disetujui.</p>
+      </div>
+      <div class="container">
+        <div class="tabs">
+          <button class="tab-btn active" onclick="tabSwitch('dr','list',this)">Daftar Permintaan</button>
+          <button class="tab-btn" onclick="tabSwitch('dr','form',this)">+ Ajukan Permintaan</button>
+        </div>
+        <div class="tab-panel active" id="dr-list">
+          <div class="tbl-wrap"><table class="tbl">
+            <thead><tr>
+              <th>No. DR</th><th>Ref. SO</th><th>Tgl Kirim</th>
+              <th>Tonase</th><th>Tujuan</th><th>Status</th>
+            </tr></thead>
+            <tbody id="c-dr-tbody"></tbody>
+          </table></div>
+        </div>
+        <div class="tab-panel" id="dr-form">
+          <div class="card">
+            <div class="card-title">Form Permintaan Pengiriman</div>
+            <div class="form-group">
+              <label class="form-label">Pilih Sales Order <span>*</span></label>
+              <select class="form-select" id="dr-soId" onchange="onDRsoChange()">
+                <option value="">-- Pilih SO yang sudah Released --</option>
+              </select>
+              <div class="form-error" id="err-drSo">Pilih SO terlebih dahulu</div>
+            </div>
+            <div class="alert alert-info" id="dr-so-info" style="display:none;">
+              <span class="alert-icon">ℹ</span>
+              <span id="dr-so-info-text"></span>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Tanggal Kirim Diminta <span>*</span></label>
+                <input class="form-input" id="dr-tanggalKirim" type="date"/>
+                <div class="form-error" id="err-drTgl">Wajib diisi</div>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Tonase Pengiriman Ini (Ton) <span>*</span></label>
+                <input class="form-input" id="dr-tonase" type="number" min="1" placeholder="Maks sesuai sisa SO" oninput="calcDRSisa()"/>
+                <div class="form-hint" id="dr-sisa-hint"></div>
+                <div class="form-error" id="err-drTon">Wajib diisi & tidak melebihi sisa SO</div>
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Lokasi Tujuan Spesifik <span>*</span></label>
+              <input class="form-input" id="dr-tujuan" placeholder="Nama gudang / lokasi proyek"/>
+              <div class="form-error" id="err-drTuj">Wajib diisi</div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Instruksi Pengiriman</label>
+              <textarea class="form-textarea" id="dr-instruksi" placeholder="Contoh: Koordinasi dengan Pak Ahmad, suhu minimal 150°C..."></textarea>
+            </div>
+            <div class="btn-group">
+              <button class="btn btn-primary" onclick="submitDR()">Ajukan Permintaan</button>
+              <button class="btn btn-ghost" onclick="tabSwitch('dr','list', document.querySelector('#dr-list').previousElementSibling)">Batal</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- C: TRACKING -->
+    <div class="tab-panel" id="csub-tracking">
+      <div class="page-header">
+        <div class="page-eyebrow">Phase 1 — Step 5 & 6</div>
+        <h1 class="page-title">Tracking Pengiriman</h1>
+        <p class="page-sub">Pantau status Delivery Order dan pergerakan armada real-time.</p>
+      </div>
+      <div class="container" id="c-tracking-content"></div>
+    </div>
+
+    <!-- C: RECEIPT -->
+    <div class="tab-panel" id="csub-receipt">
+      <div class="page-header">
+        <div class="page-eyebrow">Phase 1 — Step 7</div>
+        <h1 class="page-title">Penerimaan Barang</h1>
+        <p class="page-sub">Konfirmasi penerimaan aspal dengan Berita Acara dan tanda tangan digital.</p>
+      </div>
+      <div class="container">
+        <div class="tabs">
+          <button class="tab-btn active" onclick="tabSwitch('rcp','list',this)">Riwayat Penerimaan</button>
+          <button class="tab-btn" onclick="openReceiptForm()">+ Input Penerimaan</button>
+        </div>
+        <div class="tab-panel active" id="rcp-list">
+          <div class="tbl-wrap"><table class="tbl">
+            <thead><tr>
+              <th>No. RCP</th><th>Ref. DO</th><th>Tanggal</th>
+              <th>Penerima</th><th>Tonase Aktual</th><th>Status Verifikasi</th>
+            </tr></thead>
+            <tbody id="c-rcp-tbody"></tbody>
+          </table></div>
+        </div>
+        <div class="tab-panel" id="rcp-form">
+          <div class="card">
+            <div class="card-title">Berita Acara Penerimaan Barang</div>
+            <div class="form-group">
+              <label class="form-label">Pilih Delivery Order <span>*</span></label>
+              <select class="form-select" id="rcp-doId" onchange="onRcpDOchange()">
+                <option value="">-- Pilih DO yang Siap Diterima --</option>
+              </select>
+              <div class="form-error" id="err-rcpDo">Pilih DO terlebih dahulu</div>
+            </div>
+            <div class="alert alert-info" id="rcp-do-info" style="display:none;">
+              <span class="alert-icon">ℹ</span>
+              <span id="rcp-do-info-text"></span>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Tanggal Penerimaan <span>*</span></label>
+                <input class="form-input" id="rcp-tanggal" type="date"/>
+                <div class="form-error" id="err-rcpTgl">Wajib diisi</div>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Nama Penerima <span>*</span></label>
+                <input class="form-input" id="rcp-namaPenerima" placeholder="Nama lengkap penerima"/>
+                <div class="form-error" id="err-rcpNama">Wajib diisi</div>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Jabatan Penerima <span>*</span></label>
+                <input class="form-input" id="rcp-jabatan" placeholder="Contoh: Kepala Gudang"/>
+                <div class="form-error" id="err-rcpJbt">Wajib diisi</div>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Timbangan Aktual (Ton) <span>*</span></label>
+                <input class="form-input" id="rcp-timbangan" type="number" step="0.01" placeholder="Contoh: 199.8"/>
+                <div class="form-error" id="err-rcpTim">Wajib diisi</div>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Kondisi Aspal Saat Tiba <span>*</span></label>
+                <select class="form-select" id="rcp-kondisi">
+                  <option value="">-- Pilih Kondisi --</option>
+                  <option value="Baik — suhu sesuai, tidak ada kebocoran">Baik — suhu sesuai, tidak ada kebocoran</option>
+                  <option value="Cukup — suhu sedikit rendah, masih bisa digunakan">Cukup — suhu sedikit rendah</option>
+                  <option value="Kurang baik — ada kebocoran / suhu terlalu rendah">Kurang baik — ada masalah</option>
+                </select>
+                <div class="form-error" id="err-rcpKon">Wajib dipilih</div>
+              </div>
+              <div class="form-group">
+                <label class="form-label">No. Segel Tangki</label>
+                <input class="form-input" id="rcp-segel" placeholder="Contoh: SGL-20240405-001"/>
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Catatan Penerimaan</label>
+              <textarea class="form-textarea" id="rcp-catatan" placeholder="Catatan tambahan jika ada..."></textarea>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Tanda Tangan Digital Penerima <span>*</span></label>
+              <div class="sig-wrap" id="sigBox"
+                onmousedown="sigStart(event)" onmousemove="sigDraw(event)" onmouseup="sigStop()"
+                ontouchstart="sigStart(event)" ontouchmove="sigDraw(event)" ontouchend="sigStop()">
+                <canvas class="sig-canvas" id="sigCanvas"></canvas>
+                <div class="sig-hint" id="sigHint">Tanda tangan di kolom ini</div>
+              </div>
+              <div class="form-error" id="err-rcpSig">Tanda tangan wajib dibuat</div>
+              <div style="margin-top:8px;">
+                <button class="btn btn-ghost btn-sm" onclick="sigClear()">Hapus Tanda Tangan</button>
+              </div>
+            </div>
+            <div class="btn-group">
+              <button class="btn btn-primary" onclick="submitReceipt()">Konfirmasi Penerimaan</button>
+              <button class="btn btn-ghost" onclick="tabSwitch('rcp','list',null); renderReceiptList()">Batal</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div><!-- /main-content -->
+</div><!-- /page-customer -->
+
+
+<!-- ════════════════════════════════════════════
+     ADMIN PAGES
+════════════════════════════════════════════ -->
+<div class="page" id="page-admin">
+  <nav class="topnav">
+    <div class="nav-logo" onclick="adminNav('so')" title="Kembali ke halaman utama">
+      <div class="nav-logo-mark"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" style="width:34px;height:34px;flex-shrink:0;"><path fill="#006ceb" d="M27.24,51.76h36.45c3.35,0,6.07,2.72,6.07,6.07v17.21s0,11.66,0,11.66v7.58c0,3.35,2.72,6.07,6.07,6.07h18.22c3.35,0,6.07-2.72,6.07-6.07v-7.58s0-11.66,0-11.66V27.47c0-3.35,2.72-6.07,6.07-6.07h66.82c3.35,0,6.07,2.72,6.07,6.07v66.82c0,3.35-2.72,6.07-6.07,6.07h-62.1s-4.72,0-4.72,0c-3.35,0-6.07,2.72-6.07,6.07v18.22c0,3.35,2.72,6.07,6.07,6.07h36.45c3.35,0,6.07,2.72,6.07,6.07v36.45c0,3.35-2.72,6.07-6.07,6.07h-36.45c-3.35,0-6.07-2.72-6.07-6.07v-18.22s0-13.04,0-13.04v-5.18c0-3.35-2.72-6.07-6.07-6.07h-18.22c-3.35,0-6.07,2.72-6.07,6.07v5.18s0,13.04,0,13.04c0,3.35-2.72,6.07-6.07,6.07h-18.22c-3.35,0-6.07-2.72-6.07-6.07v-18.22c0-3.35,2.72-6.07,6.07-6.07h18.23c3.35,0,6.07-2.72,6.07-6.07v-18.22c0-3.35-2.72-6.07-6.07-6.07h-5.29s-31.15,0-31.15,0c-3.35,0-6.07-2.72-6.07-6.07v-36.45c0-3.35,2.72-6.07,6.07-6.07Z"/></svg></div>
+      <div class="nav-brand">
+        <div class="nav-brand-name">DMK Group</div>
+        <div class="nav-brand-sub">Admin Portal</div>
+      </div>
+    </div>
+    <div class="nav-center">
+      <span class="nav-link active" id="anl-so" onclick="adminNav('so')">Verifikasi SO</span>
+      <span class="nav-link" id="anl-do" onclick="adminNav('do')">Buat DO</span>
+      <span class="nav-link" id="anl-tracking" onclick="adminNav('tracking')">Tracking</span>
+      <span class="nav-link" id="anl-verify" onclick="adminNav('verify')">Verifikasi TTD</span>
+    </div>
+    <div class="nav-right">
+      <span class="nav-role-badge">Administrator</span>
+      <span class="nav-user" id="adminNavName"></span>
+      <div class="nav-avatar" id="adminNavAvatar"></div>
+      <button class="nav-logout" onclick="doLogout()">Keluar</button>
+    </div>
+  </nav>
+
+  <div class="main-content">
+    <!-- A: DASHBOARD -->
+    <div class="tab-panel" id="asub-dashboard">
+      <div class="page-header">
+        <div class="page-eyebrow">Admin Overview</div>
+        <h1 class="page-title">Dashboard Administrator</h1>
+        <p class="page-sub">Ringkasan aktivitas portal seluruh customer DMK Group.</p>
+      </div>
+      <div class="container">
+        <div class="grid-4 mb-24" id="a-stats"></div>
+        <div class="grid-2">
+          <div class="card">
+            <div class="card-title">SO Menunggu Verifikasi</div>
+            <div id="a-dash-so"></div>
+          </div>
+          <div class="card">
+            <div class="card-title">Penerimaan Menunggu Verifikasi TTD</div>
+            <div id="a-dash-verify"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- A: VERIFIKASI SO -->
+    <div class="tab-panel active" id="asub-so">
+      <div class="page-header">
+        <div class="page-eyebrow">Phase 1 — Step 2 & 3</div>
+        <h1 class="page-title">Verifikasi Sales Order</h1>
+        <p class="page-sub">Review dan approve/reject Sales Order dari seluruh customer.</p>
+      </div>
+      <div class="container">
+        <div class="tabs">
+          <button class="tab-btn active" onclick="tabSwitch('aso','pending',this)">Menunggu Review</button>
+          <button class="tab-btn" onclick="tabSwitch('aso','all',this)">Semua SO</button>
+        </div>
+        <div class="tab-panel active" id="aso-pending">
+          <div class="tbl-wrap"><table class="tbl">
+            <thead><tr><th>No. SO</th><th>Ref. PO</th><th>Customer</th><th>Produk</th><th>Tonase</th><th>Tanggal</th><th>Aksi</th></tr></thead>
+            <tbody id="a-so-pending-tbody"></tbody>
+          </table></div>
+        </div>
+        <div class="tab-panel" id="aso-all">
+          <div class="tbl-wrap"><table class="tbl">
+            <thead><tr><th>No. SO</th><th>Ref. PO</th><th>Customer</th><th>Produk</th><th>Tonase</th><th>Status</th><th>Catatan</th></tr></thead>
+            <tbody id="a-so-all-tbody"></tbody>
+          </table></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- A: BUAT DO -->
+    <div class="tab-panel" id="asub-do">
+      <div class="page-header">
+        <div class="page-eyebrow">Phase 1 — Step 5</div>
+        <h1 class="page-title">Delivery Order</h1>
+        <p class="page-sub">Buat dan posting Delivery Order berdasarkan permintaan pengiriman customer.</p>
+      </div>
+      <div class="container">
+        <div class="tabs">
+          <button class="tab-btn active" onclick="tabSwitch('ado','pending',this)">DR Menunggu DO</button>
+          <button class="tab-btn" onclick="tabSwitch('ado','all',this)">Semua DO</button>
+        </div>
+        <div class="tab-panel active" id="ado-pending">
+          <div class="tbl-wrap"><table class="tbl">
+            <thead><tr><th>No. DR</th><th>Customer</th><th>Produk</th><th>Tgl Kirim</th><th>Tonase</th><th>Tujuan</th><th>Aksi</th></tr></thead>
+            <tbody id="a-dr-pending-tbody"></tbody>
+          </table></div>
+        </div>
+        <div class="tab-panel" id="ado-all">
+          <div class="tbl-wrap"><table class="tbl">
+            <thead><tr><th>No. DO</th><th>Customer</th><th>Kendaraan</th><th>Driver</th><th>Tonase</th><th>Status</th><th>Aksi</th></tr></thead>
+          <tbody id="a-do-all-tbody"></tbody>
+          </table></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- A: TRACKING -->
+    <div class="tab-panel" id="asub-tracking">
+      <div class="page-header">
+        <div class="page-eyebrow">Phase 1 — Step 6</div>
+        <h1 class="page-title">Tracking Armada</h1>
+        <p class="page-sub">Monitor dan update status pengiriman seluruh DO yang aktif.</p>
+      </div>
+      <div class="container" id="a-tracking-content"></div>
+    </div>
+
+    <!-- A: VERIFIKASI TTD -->
+    <div class="tab-panel" id="asub-verify">
+      <div class="page-header">
+        <div class="page-eyebrow">Phase 2</div>
+        <h1 class="page-title">Verifikasi Tanda Tangan Digital</h1>
+        <p class="page-sub">Verifikasi Berita Acara Penerimaan Barang dari customer — Phase 2 DMK.</p>
+      </div>
+      <div class="container">
+        <div class="tabs">
+          <button class="tab-btn active" onclick="tabSwitch('avfy','pending',this)">Menunggu Verifikasi</button>
+          <button class="tab-btn" onclick="tabSwitch('avfy','all',this)">Semua BAPB</button>
+        </div>
+        <div class="tab-panel active" id="avfy-pending">
+          <div class="tbl-wrap"><table class="tbl">
+            <thead><tr><th>No. RCP</th><th>Ref. DO</th><th>Customer</th><th>Penerima</th><th>Tgl Terima</th><th>Tonase Aktual</th><th>Aksi</th></tr></thead>
+            <tbody id="a-rcp-pending-tbody"></tbody>
+          </table></div>
+        </div>
+        <div class="tab-panel" id="avfy-all">
+          <div class="tbl-wrap"><table class="tbl">
+            <thead><tr><th>No. RCP</th><th>Ref. DO</th><th>Customer</th><th>Tonase Aktual</th><th>Status</th><th>Diverifikasi Oleh</th><th>Tgl Verifikasi</th></tr></thead>
+            <tbody id="a-rcp-all-tbody"></tbody>
+          </table></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div id="toast"></div>
+
+<!-- MODAL: SO Approve/Reject -->
+<div class="modal-bg" id="modal-so">
+  <div class="modal-box">
+    <div class="modal-header">
+      <span class="modal-title" id="modal-so-title">Review Sales Order</span>
+      <button class="modal-close" onclick="closeModal('modal-so')">✕</button>
+    </div>
+    <div id="modal-so-detail"></div>
+    <div class="form-group mt-16">
+      <label class="form-label">Catatan Admin</label>
+      <textarea class="form-textarea" id="modal-so-catatan" placeholder="Alasan approve / reject..."></textarea>
+    </div>
+    <div class="btn-group">
+      <button class="btn btn-success" onclick="soAction('approve')">Approve SO</button>
+      <button class="btn btn-danger" onclick="soAction('reject')">Reject SO</button>
+      <button class="btn btn-ghost" onclick="closeModal('modal-so')">Batal</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Buat DO -->
+<div class="modal-bg" id="modal-do">
+  <div class="modal-box">
+    <div class="modal-header">
+      <span class="modal-title">Buat Delivery Order</span>
+      <button class="modal-close" onclick="closeModal('modal-do')">✕</button>
+    </div>
+    <div id="modal-do-detail"></div>
+    <div class="divider"></div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">No. Kendaraan <span>*</span></label>
+        <input class="form-input" id="do-kendaraan" placeholder="Contoh: B 1234 XY"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Nama Driver <span>*</span></label>
+        <input class="form-input" id="do-driver" placeholder="Nama driver"/>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">No. Telepon Driver</label>
+        <input class="form-input" id="do-telDriver" placeholder="08xx-xxxx-xxxx"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Terminal Keberangkatan</label>
+        <select class="form-select" id="do-terminal">
+          <option value="Bulk Terminal Surabaya">Bulk Terminal Surabaya</option>
+          <option value="Bulk Terminal Semarang">Bulk Terminal Semarang</option>
+          <option value="Bulk Terminal Bali">Bulk Terminal Bali</option>
+          <option value="Bulk Terminal Halmahera">Bulk Terminal Halmahera</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Tonase DO (Ton) <span>*</span></label>
+      <input class="form-input" id="do-tonase" type="number"/>
+    </div>
+    <div class="btn-group">
+      <button class="btn btn-primary" onclick="submitDO()">Posting DO</button>
+      <button class="btn btn-ghost" onclick="closeModal('modal-do')">Batal</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Verifikasi Receipt -->
+<div class="modal-bg" id="modal-verify">
+  <div class="modal-box" style="max-width:640px;">
+    <div class="modal-header">
+      <span class="modal-title">Verifikasi Berita Acara Penerimaan</span>
+      <button class="modal-close" onclick="closeModal('modal-verify')">✕</button>
+    </div>
+    <div id="modal-verify-detail"></div>
+    <div class="form-group mt-16">
+      <label class="form-label">Catatan Verifikasi Admin DMK</label>
+      <textarea class="form-textarea" id="modal-verify-catatan" placeholder="Catatan persetujuan atau alasan penolakan..."></textarea>
+    </div>
+    <div class="btn-group">
+      <button class="btn btn-success" onclick="verifyAction('approve')">Verifikasi & Approve</button>
+      <button class="btn btn-danger" onclick="verifyAction('reject')">Tolak / Minta Klarifikasi</button>
+      <button class="btn btn-ghost" onclick="closeModal('modal-verify')">Batal</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Update Tracking -->
+<div class="modal-bg" id="modal-track">
+  <div class="modal-box" style="max-width:420px;">
+    <div class="modal-header">
+      <span class="modal-title">Update Status Tracking</span>
+      <button class="modal-close" onclick="closeModal('modal-track')">✕</button>
+    </div>
+    <div class="form-group">
+      <label class="form-label">DO</label>
+      <div class="field-box" id="track-do-id"></div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Status Baru</label>
+      <select class="form-select" id="track-status">
+        <option value="loading">Muat Barang</option>
+        <option value="departed">Berangkat</option>
+        <option value="transit">Dalam Perjalanan</option>
+        <option value="arrived">Tiba di Lokasi</option>
+        <option value="delivered">Diterima</option>
+      </select>
+    </div>
+    <div class="btn-group">
+      <button class="btn btn-primary" onclick="submitTracking()">Update Status</button>
+      <button class="btn btn-ghost" onclick="closeModal('modal-track')">Batal</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════
+//  DMK PORTAL — DATA STORE
+// ═══════════════════════════════════════════
+
+const DB = {
+  // ── session ──────────────────────────────
+  session: null,
+
+  // ── users ────────────────────────────────
+  users: [
+    { id: 'C001', role: 'customer', name: 'PT. Maju Bersama',      company: 'PT. Maju Bersama',      username: 'customer1', password: 'demo123', avatar: 'MB' },
+    { id: 'C002', role: 'customer', name: 'PT. Karya Jaya',        company: 'PT. Karya Jaya',        username: 'customer2', password: 'demo123', avatar: 'KJ' },
+    { id: 'A001', role: 'admin',    name: 'Rina Agustina',         company: 'DMK Group',             username: 'admin',     password: 'admin123', avatar: 'RA' },
+    { id: 'A002', role: 'admin',    name: 'Budi Hartono',          company: 'DMK Group',             username: 'admin2',    password: 'admin123', avatar: 'BH' },
+  ],
+
+  // ── purchase orders ──────────────────────
+  po: [],
+
+  // ── sales orders ────────────────────────
+  so: [],
+
+  // ── delivery requests ───────────────────
+  dr: [],
+
+  // ── delivery orders ──────────────────────
+  doList: [],
+
+  // ── receipts ─────────────────────────────
+  receipts: [],
+
+  // ── counters ─────────────────────────────
+  counters: { po: 1, so: 1, dr: 1, do: 1, inv: 1 },
+
+  // ── helpers ──────────────────────────────
+  nextId(prefix) {
+    const k = prefix.toLowerCase().replace('-','');
+    const n = (this.counters[k] || 1);
+    this.counters[k] = n + 1;
+    const y = new Date().getFullYear();
+    return `${prefix.toUpperCase()}-${y}-${String(n).padStart(4,'0')}`;
+  },
+
+  today() {
+    return new Date().toISOString().split('T')[0];
+  },
+
+  fmt(dateStr) {
+    if (!dateStr) return '—';
+    const d = new Date(dateStr);
+    return d.toLocaleDateString('id-ID', { day:'2-digit', month:'short', year:'numeric' });
+  },
+
+  fmtNum(n) {
+    return Number(n).toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+  },
+
+  // create PO
+  createPO(data) {
+    const id = this.nextId('PO');
+    const po = { id, ...data, status: 'pending', createdAt: this.today(), customerId: this.session.id, customerName: this.session.name };
+    this.po.push(po);
+    return po;
+  },
+
+  // get POs for current user
+  myPOs() {
+    if (this.session?.role === 'admin') return this.po;
+    return this.po.filter(p => p.customerId === this.session?.id);
+  },
+
+  // create SO from PO (admin)
+  createSO(poId) {
+    const po = this.po.find(p => p.id === poId);
+    if (!po) return null;
+    const id = this.nextId('SO');
+    const so = { id, poId, customerId: po.customerId, customerName: po.customerName, product: po.product, tonaseTotal: po.tonase, tonaseSisa: po.tonase, harga: po.harga, lokasi: po.lokasi, status: 'pending', createdAt: this.today() };
+    this.so.push(so);
+    po.soId = id; po.status = 'so-created';
+    return so;
+  },
+
+  // approve/reject SO
+  updateSO(soId, action, catatan) {
+    const so = this.so.find(s => s.id === soId);
+    if (!so) return;
+    const po = this.po.find(p => p.soId === soId);
+    if (action === 'approve') {
+      so.status = 'released'; so.approvedAt = this.today(); so.catatan = catatan;
+      if (po) po.status = 'approved';
+    } else {
+      so.status = 'rejected'; so.rejectedAt = this.today(); so.catatan = catatan;
+      if (po) po.status = 'rejected';
+    }
+  },
+
+  mySOs() {
+    if (this.session?.role === 'admin') return this.so;
+    return this.so.filter(s => s.customerId === this.session?.id);
+  },
+
+  // delivery request (customer)
+  createDR(data) {
+    const id = this.nextId('DR');
+    const so = this.so.find(s => s.id === data.soId);
+    const dr = { id, ...data, status: 'pending', createdAt: this.today(), customerId: this.session.id, customerName: this.session.name, product: so?.product, soTonaseTotal: so?.tonaseTotal };
+    this.dr.push(dr);
+    return dr;
+  },
+
+  myDRs() {
+    if (this.session?.role === 'admin') return this.dr;
+    return this.dr.filter(d => d.customerId === this.session?.id);
+  },
+
+  // create DO (admin)
+  createDO(data) {
+    const id = this.nextId('DO');
+    const dr = this.dr.find(d => d.id === data.drId);
+    const so = this.so.find(s => s.id === dr?.soId);
+    const doObj = { id, ...data, drId: dr?.id, soId: dr?.soId, customerId: dr?.customerId, customerName: dr?.customerName, product: dr?.product, status: 'posted', postedAt: this.today(), trackStatus: 'loading' };
+    this.doList.push(doObj);
+    if (dr) dr.status = 'do-created'; dr.doId = id;
+    if (so) { so.tonaseSisa = Math.max(0, (so.tonaseSisa||so.tonaseTotal) - Number(data.tonase)); }
+    return doObj;
+  },
+
+  myDOs() {
+    if (this.session?.role === 'admin') return this.doList;
+    return this.doList.filter(d => d.customerId === this.session?.id);
+  },
+
+  // update tracking
+  updateTracking(doId, status) {
+    const d = this.doList.find(x => x.id === doId);
+    if (d) d.trackStatus = status;
+  },
+
+  // receipt (customer)
+  createReceipt(data, sigDataUrl) {
+    const id = this.nextId('RCP');
+    const invId = this.nextId('INV');
+    const receipt = { id, invId, ...data, sigDataUrl, createdAt: this.today(), verifyStatus: 'pending', customerId: this.session.id, customerName: this.session.name };
+    this.receipts.push(receipt);
+    const d = this.doList.find(x => x.id === data.doId);
+    if (d) { d.status = 'delivered'; d.trackStatus = 'delivered'; d.receiptId = id; }
+    return receipt;
+  },
+
+  myReceipts() {
+    if (this.session?.role === 'admin') return this.receipts;
+    return this.receipts.filter(r => r.customerId === this.session?.id);
+  },
+
+  // verify receipt (admin DMK)
+  verifyReceipt(rcpId, action, catatan) {
+    const r = this.receipts.find(x => x.id === rcpId);
+    if (!r) return;
+    r.verifyStatus = action === 'approve' ? 'verified' : 'rejected';
+    r.verifyCatatan = catatan;
+    r.verifiedAt = this.today();
+    r.verifiedBy = this.session?.name;
+    const d = this.doList.find(x => x.id === r.doId);
+    if (d && action === 'approve') d.status = 'closed';
+  },
+};
+
+// ── seed demo data ────────────────────────────
+function seedDemo() {
+  const admin  = DB.users.find(u => u.id === 'A001');
+  const cust1  = DB.users.find(u => u.id === 'C001'); // PT. Maju Bersama
+  const cust2  = DB.users.find(u => u.id === 'C002'); // PT. Karya Jaya
+
+  // ─────────────────────────────────────────────
+  // SKENARIO 1 — SELESAI PENUH (Closed & Verified)
+  // PT. Maju Bersama: PO → SO Released → DR → DO Delivered → Receipt + TTD → Verified
+  // ─────────────────────────────────────────────
+  DB.session = cust1;
+  const po1 = DB.createPO({
+    noPO: 'PO-2024-0001', tanggalPO: '2024-03-01',
+    product: 'Aspal Curah Pen 60/70', tonase: 500, harga: 12500000,
+    lokasi: 'Proyek Tol Surabaya–Gempol, Sidoarjo', catatan: 'Suhu minimal 150°C saat tiba'
+  });
+  DB.session = admin;
+  const so1 = DB.createSO(po1.id);
+  DB.updateSO(so1.id, 'approve', 'Stok tersedia 1.200 Ton di Terminal Surabaya. Disetujui.');
+  DB.session = cust1;
+  const dr1 = DB.createDR({
+    soId: so1.id, tanggalKirim: '2024-03-10', tonase: 200,
+    tujuan: 'Gudang Proyek Km 14, Waru, Sidoarjo', instruksi: 'Koordinasi dengan Pak Fauzi — 0812-3456-7890'
+  });
+  DB.session = admin;
+  const do1 = DB.createDO({
+    drId: dr1.id, tonase: 200, noKendaraan: 'B 1234 XY', driver: 'Budi Santoso',
+    telDriver: '0813-1234-5678', terminal: 'Bulk Terminal Surabaya', tujuan: dr1.tujuan
+  });
+  do1.trackStatus = 'delivered'; do1.status = 'delivered';
+  DB.session = cust1;
+  const rcp1 = DB.createReceipt({
+    doId: do1.id, tanggal: '2024-03-10', namaPenerima: 'Ahmad Fauzi',
+    jabatan: 'Kepala Gudang', timbangan: 199.8, kondisi: 'Baik — suhu 155°C',
+    segel: 'SGL-2024-0310-001', catatan: 'Selisih 0.2T dalam batas toleransi'
+  }, 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAMgAAABkCAYAAADDhn8LAAAB2klEQVR4Xu3BMQEAAADCoPVP7WsIoAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAeAMBuAABITAa6QAAAABJRU5ErkJggg==');
+  DB.session = admin;
+  DB.verifyReceipt(rcp1.id, 'approve', 'Selisih 0.2T masih dalam toleransi ±0.5T. Diverifikasi dan DO ditutup.');
+
+  // ─────────────────────────────────────────────
+  // SKENARIO 2 — DR KEDUA (Parsial, DO Transit)
+  // PT. Maju Bersama: DR ke-2 dari SO yang sama, DO sedang transit
+  // ─────────────────────────────────────────────
+  DB.session = cust1;
+  const dr2 = DB.createDR({
+    soId: so1.id, tanggalKirim: '2024-03-20', tonase: 150,
+    tujuan: 'Gudang Proyek Km 14, Waru, Sidoarjo', instruksi: 'Pengiriman siang hari, jam 10.00–14.00'
+  });
+  DB.session = admin;
+  const do2 = DB.createDO({
+    drId: dr2.id, tonase: 150, noKendaraan: 'L 5678 AB', driver: 'Hendra Wijaya',
+    telDriver: '0856-7890-1234', terminal: 'Bulk Terminal Surabaya', tujuan: dr2.tujuan
+  });
+  do2.trackStatus = 'transit';
+
+  // ─────────────────────────────────────────────
+  // SKENARIO 3 — DR KETIGA (Parsial, menunggu DO dari Admin)
+  // Sisa SO 150T — customer sudah buat DR, admin belum buat DO
+  // ─────────────────────────────────────────────
+  DB.session = cust1;
+  DB.createDR({
+    soId: so1.id, tanggalKirim: '2024-04-01', tonase: 150,
+    tujuan: 'Gudang Proyek Km 14, Waru, Sidoarjo', instruksi: 'Pengiriman pagi, sebelum jam 08.00'
+  });
+
+  // ─────────────────────────────────────────────
+  // SKENARIO 4 — PO Baru (Menunggu verifikasi SO dari Admin)
+  // PT. Maju Bersama: PO kedua, belum ada SO
+  // ─────────────────────────────────────────────
+  DB.session = cust1;
+  DB.createPO({
+    noPO: 'PO-2024-0002', tanggalPO: '2024-03-15',
+    product: 'Polymer Modified Asphalt (PMA)', tonase: 300, harga: 18500000,
+    lokasi: 'Proyek Runway Bandara Juanda, Surabaya', catatan: 'Spesifikasi PMA Elastomer, Penetrasi 40/60'
+  });
+
+  // ─────────────────────────────────────────────
+  // SKENARIO 5 — Customer 2: PO → SO Released → DR menunggu DO
+  // PT. Karya Jaya: alur hampir sama, DO belum dibuat
+  // ─────────────────────────────────────────────
+  DB.session = cust2;
+  const po3 = DB.createPO({
+    noPO: 'PO-2024-0003', tanggalPO: '2024-03-05',
+    product: 'Aspal Curah Pen 80/100', tonase: 400, harga: 11800000,
+    lokasi: 'Proyek Jalan Provinsi Demak–Kudus, Jawa Tengah', catatan: 'Pengiriman bertahap, 4 trip @ 100T'
+  });
+  DB.session = admin;
+  const so3 = DB.createSO(po3.id);
+  DB.updateSO(so3.id, 'approve', 'Stok Pen 80/100 tersedia di Terminal Semarang. Disetujui.');
+  DB.session = cust2;
+  DB.createDR({
+    soId: so3.id, tanggalKirim: '2024-03-18', tonase: 100,
+    tujuan: 'Gudang Dinas PU Demak, Jl. Pemuda No. 12 Demak', instruksi: 'Hubungi Pak Suryo — 0815-9876-5432 sebelum berangkat'
+  });
+
+  // ─────────────────────────────────────────────
+  // SKENARIO 6 — Customer 2: PO Ditolak
+  // PT. Karya Jaya: PO yang di-reject admin
+  // ─────────────────────────────────────────────
+  DB.session = cust2;
+  const po4 = DB.createPO({
+    noPO: 'PO-2024-0004', tanggalPO: '2024-03-08',
+    product: 'Aspal Drum Pen 60/70', tonase: 50, harga: 14000000,
+    lokasi: 'Proyek Jalan Kabupaten Blora', catatan: 'Pengiriman ke daerah terpencil'
+  });
+  DB.session = admin;
+  const so4 = DB.createSO(po4.id);
+  DB.updateSO(so4.id, 'reject', 'Stok Aspal Drum untuk area Blora tidak tersedia. Mohon koordinasi terlebih dahulu.');
+
+  // ─────────────────────────────────────────────
+  // SKENARIO 7 — Customer 2: DO Arrived, Menunggu Input Penerimaan Customer
+  // PT. Karya Jaya: DO sudah tiba, customer belum input BAPB
+  // ─────────────────────────────────────────────
+  DB.session = cust2;
+  const po5 = DB.createPO({
+    noPO: 'PO-2024-0005', tanggalPO: '2024-02-20',
+    product: 'Aspal Curah Pen 60/70', tonase: 200, harga: 12500000,
+    lokasi: 'Proyek Rehabilitasi Jalan Nasional Semarang', catatan: 'Koordinasi dengan PPK'
+  });
+  DB.session = admin;
+  const so5 = DB.createSO(po5.id);
+  DB.updateSO(so5.id, 'approve', 'Disetujui. Stok cukup.');
+  DB.session = cust2;
+  const dr5 = DB.createDR({
+    soId: so5.id, tanggalKirim: '2024-03-12', tonase: 200,
+    tujuan: 'Gudang Balai Besar Pelaksanaan Jalan Nasional VII, Semarang', instruksi: 'Masuk via Gate B, jam 07.00–15.00'
+  });
+  DB.session = admin;
+  const do5 = DB.createDO({
+    drId: dr5.id, tonase: 200, noKendaraan: 'H 9988 CD', driver: 'Agus Prasetyo',
+    telDriver: '0822-4444-5555', terminal: 'Bulk Terminal Semarang', tujuan: dr5.tujuan
+  });
+  do5.trackStatus = 'arrived'; do5.status = 'delivered';
+
+  // ─────────────────────────────────────────────
+  // SKENARIO 8 — Customer 2: BAPB menunggu verifikasi Admin TTD
+  // PT. Karya Jaya: sudah submit receipt + TTD, admin belum verifikasi
+  // ─────────────────────────────────────────────
+  DB.session = cust2;
+  const po6 = DB.createPO({
+    noPO: 'PO-2024-0006', tanggalPO: '2024-02-10',
+    product: 'Aspal Curah Pen 60/70', tonase: 150, harga: 12500000,
+    lokasi: 'Proyek Pelebaran Jalan Ungaran–Bawen', catatan: 'Pengiriman malam hari OK'
+  });
+  DB.session = admin;
+  const so6 = DB.createSO(po6.id);
+  DB.updateSO(so6.id, 'approve', 'Disetujui.');
+  DB.session = cust2;
+  const dr6 = DB.createDR({
+    soId: so6.id, tanggalKirim: '2024-02-25', tonase: 150,
+    tujuan: 'Gudang Kontraktor CV. Berkah Jaya, Ungaran', instruksi: 'Hubungi Pak Doni sebelum berangkat'
+  });
+  DB.session = admin;
+  const do6 = DB.createDO({
+    drId: dr6.id, tonase: 150, noKendaraan: 'H 3344 EF', driver: 'Slamet Riyadi',
+    telDriver: '0811-2233-4455', terminal: 'Bulk Terminal Semarang', tujuan: dr6.tujuan
+  });
+  do6.trackStatus = 'delivered'; do6.status = 'delivered';
+  DB.session = cust2;
+  DB.createReceipt({
+    doId: do6.id, tanggal: '2024-02-25', namaPenerima: 'Doni Setiawan',
+    jabatan: 'Site Manager', timbangan: 150.3, kondisi: 'Baik — suhu 152°C',
+    segel: 'SGL-2024-0225-001', catatan: 'Barang diterima dalam kondisi baik'
+  }, 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAMgAAABkCAYAAADDhn8LAAAB2klEQVR4Xu3BMQEAAADCoPVP7WsIoAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAeAMBuAABITAa6QAAAABJRU5ErkJggg==');
+
+  // Reset counters supaya urut dari 0 lagi
+  DB.session = null;
+}
+
+try { seedDemo(); } catch(e) { console.warn('Seed skipped:', e); }
+
+</script>
+<script>
+// ═══════════════════════════════════════════
+//  DMK PORTAL — APPLICATION LOGIC
+// ═══════════════════════════════════════════
+
+// ── state ───────────────────────────────────
+let currentSOId   = null;
+let currentDRId   = null;
+let currentRCPId  = null;
+let currentDOId   = null;
+let sigCtx        = null;
+let sigActive     = false;
+
+// ── login / logout ──────────────────────────
+let selectedRole = 'customer';
+
+function selectRole(el) {
+  document.querySelectorAll('.role-card').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+  selectedRole = el.dataset.role;
+}
+
+// doLogin now delegates to doLoginAsync (defined below with Supabase support)
+function doLogin() { doLoginAsync(); }
+
+function doLogout() {
+  DB.session = null;
+  showPage('login');
+  $('loginUser').value = '';
+  $('loginPass').value = '';
+}
+
+// ── page router ─────────────────────────────
+function showPage(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  $(`page-${name}`).classList.add('active');
+}
+
+function $ (id) { return document.getElementById(id); }
+function el(tag, cls, html) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (html !== undefined) e.innerHTML = html;
+  return e;
+}
+
+// ── toast ────────────────────────────────────
+let toastTimer;
+function toast(msg, type='info') {
+  const t = $('toast');
+  t.textContent = msg;
+  t.style.background = type === 'error' ? '#9b2c2c' : type === 'success' ? '#1a7a4a' : '#006ceb';
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+// ── modal ────────────────────────────────────
+function openModal(id) { $(id).classList.add('open'); }
+function closeModal(id) { $(id).classList.remove('open'); }
+
+// ── tabs ─────────────────────────────────────
+function tabSwitch(group, panel, btn) {
+  const panels = document.querySelectorAll(`[id^="${group}-"]`);
+  panels.forEach(p => p.classList.remove('active'));
+  const target = $(`${group}-${panel}`);
+  if (target) target.classList.add('active');
+  if (btn) {
+    const parent = btn.closest('.tabs');
+    if (parent) parent.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  }
+}
+
+// ── badge html ───────────────────────────────
+const STATUS_MAP = {
+  pending:     ['badge-pending',  'Menunggu'],
+  'so-created':['badge-info',     'SO Dibuat'],
+  approved:    ['badge-approved', 'Disetujui'],
+  rejected:    ['badge-rejected', 'Ditolak'],
+  released:    ['badge-released', 'Released'],
+  posted:      ['badge-posted',   'Posted'],
+  'do-created':['badge-info',     'DO Dibuat'],
+  transit:     ['badge-transit',  'Dalam Kirim'],
+  delivered:   ['badge-delivered','Terkirim'],
+  closed:      ['badge-closed',   'Closed'],
+  verified:    ['badge-approved', 'Terverifikasi'],
+};
+const TRACK_MAP = {
+  loading:   'Muat Barang',
+  departed:  'Berangkat',
+  transit:   'Dalam Perjalanan',
+  arrived:   'Tiba di Lokasi',
+  delivered: 'Diterima',
+};
+
+function badge(status) {
+  const [cls, lbl] = STATUS_MAP[status] || ['badge-pending', status];
+  return `<span class="badge ${cls}">${lbl}</span>`;
+}
+
+// ════════════════════════════════════════════
+//  CUSTOMER
+// ════════════════════════════════════════════
+async function initCustomer() {
+  showPage('customer');
+  $('custNavName').textContent = DB.session.name;
+  $('custNavAvatar').textContent = DB.session.avatar;
+  // Load data dari Supabase jika terhubung
+  if (_sb) {
+    try {
+      const [pos, sos, drs, dos, rcps] = await Promise.all([
+        API.getPOs(DB.session.id, 'customer'),
+        API.getSOs(DB.session.id, 'customer'),
+        API.getDRs(DB.session.id, 'customer'),
+        API.getDOs(DB.session.id, 'customer'),
+        API.getReceipts(DB.session.id, 'customer'),
+      ]);
+      // Map Supabase snake_case ke camelCase yang digunakan DB local
+      DB.po       = pos.map(mapPO);
+      DB.so       = sos.map(mapSO);
+      DB.dr       = drs.map(mapDR);
+      DB.doList   = dos.map(mapDO);
+      DB.receipts = rcps.map(mapRCP);
+    } catch(e) { console.error('Supabase load error:', e); }
+  }
+  custNav('po');
+}
+
+function custNav(sub) {
+  document.querySelectorAll('[id^="csub-"]').forEach(p => p.classList.remove('active'));
+  $(`csub-${sub}`).classList.add('active');
+  document.querySelectorAll('[id^="cnl-"]').forEach(l => l.classList.remove('active'));
+  $(`cnl-${sub}`)?.classList.add('active');
+
+  const renders = {
+    po: renderPOList,
+    so: renderSOList,
+    dr: renderDRList,
+    tracking: renderCustTracking,
+    receipt: renderReceiptList,
+  };
+  (renders[sub] || (() => {}))();
+}
+
+// ── customer dashboard ───────────────────────
+function renderCustDash() {
+  $('c-dash-greeting').textContent = `Selamat datang, ${DB.session.name}`;
+  const pos = DB.myPOs();
+  const sos = DB.mySOs();
+  const drs = DB.myDRs();
+  const dos = DB.myDOs();
+
+  $('c-stats').innerHTML = [
+    ['stat-card', `<div class="stat-num">${pos.length}</div><div class="stat-lbl">Purchase Order</div>`],
+    ['stat-card', `<div class="stat-num">${sos.filter(s=>s.status==='released').length}</div><div class="stat-lbl">SO Released</div>`],
+    ['stat-card', `<div class="stat-num">${dos.filter(d=>['posted','transit','arrived'].includes(d.status)).length}</div><div class="stat-lbl">DO Aktif</div>`],
+    ['stat-card', `<div class="stat-num">${dos.filter(d=>d.status==='closed').length}</div><div class="stat-lbl">DO Selesai</div>`],
+  ].map(([c,h]) => `<div class="${c}">${h}</div>`).join('');
+
+  // recent POs
+  const recentPOs = pos.slice(-3).reverse();
+  $('c-dash-po').innerHTML = recentPOs.length ? recentPOs.map(po => `
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--navy-border);">
+      <div><div class="fw-500 fs-13">${po.id}</div><div class="col-muted" style="font-size:11px;">${po.product} · ${DB.fmtNum(po.tonase)} Ton</div></div>
+      ${badge(po.status)}
+    </div>`).join('') : emptyState('Belum ada PO');
+
+  // active DOs
+  const activeDOs = dos.filter(d => !['closed'].includes(d.status)).slice(-3).reverse();
+  $('c-dash-do').innerHTML = activeDOs.length ? activeDOs.map(d => `
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--navy-border);">
+      <div><div class="fw-500 fs-13">${d.id}</div><div class="col-muted" style="font-size:11px;">${d.tujuan} · ${DB.fmtNum(d.tonase)} Ton</div></div>
+      ${badge(d.status)}
+    </div>`).join('') : emptyState('Belum ada DO aktif');
+}
+
+// ── PO ───────────────────────────────────────
+function renderPOList() {
+  const rows = DB.myPOs().slice().reverse();
+  $('c-po-tbody').innerHTML = rows.length ? rows.map(po => `
+    <tr>
+      <td class="col-blue fw-500">${po.id}</td>
+      <td>${DB.fmt(po.tanggalPO)}</td>
+      <td>${po.product}</td>
+      <td>${DB.fmtNum(po.tonase)} Ton</td>
+      <td>${po.lokasi}</td>
+      <td>${badge(po.status)}</td>
+      <td><div class="tbl-actions">
+        ${po.status==='rejected' ? `<button class="btn btn-ghost btn-sm" onclick="refillPO('${po.id}')">Ulangi</button>` : ''}
+      </div></td>
+    </tr>`).join('') : `<tr><td colspan="7">${emptyState('Belum ada PO. Klik "Buat PO Baru" untuk mulai.')}</td></tr>`;
+}
+
+function submitPO() {
+  const fields = ['noPO','tanggal','product','tonase','harga','lokasi'];
+  let ok = true;
+  fields.forEach(f => {
+    const v = $(`po-${f}`)?.value?.trim();
+    const err = $(`err-${f}`);
+    if (!v) { err.style.display = 'block'; $(`po-${f}`).classList.add('error'); ok = false; }
+    else { err.style.display = 'none'; $(`po-${f}`).classList.remove('error'); }
+  });
+  if (!ok) { toast('Lengkapi semua field yang wajib diisi.', 'error'); return; }
+
+  DB.createPO({
+    noPO: $('po-noPO').value.trim(),
+    tanggalPO: $('po-tanggal').value,
+    product: $('po-product').value,
+    tonase: Number($('po-tonase').value),
+    harga: Number($('po-harga').value),
+    lokasi: $('po-lokasi').value.trim(),
+    catatan: $('po-catatan').value.trim(),
+  });
+
+  toast('Purchase Order berhasil dikirim!', 'success');
+  resetPOForm();
+  const listBtn = document.querySelector('#csub-po .tab-btn');
+  tabSwitch('po', 'list', listBtn);
+  renderPOList();
+}
+
+function resetPOForm() {
+  ['noPO','tanggal','product','tonase','harga','lokasi','catatan'].forEach(f => {
+    const el = $(`po-${f}`); if (el) { el.value = ''; el.classList.remove('error'); }
+  });
+  ['noPO','tanggal','product','tonase','harga','lokasi'].forEach(f => {
+    const err = $(`err-${f}`); if(err) err.style.display='none';
+  });
+}
+
+function refillPO(id) {
+  const po = DB.po.find(p => p.id === id);
+  if (!po) return;
+  const formBtn = document.querySelectorAll('#csub-po .tab-btn')[1];
+  tabSwitch('po','form', formBtn);
+  $('po-noPO').value = po.noPO;
+  $('po-tanggal').value = po.tanggalPO;
+  $('po-product').value = po.product;
+  $('po-tonase').value = po.tonase;
+  $('po-harga').value = po.harga;
+  $('po-lokasi').value = po.lokasi;
+  $('po-catatan').value = po.catatan||'';
+}
+
+// ── SO (customer view) ───────────────────────
+function renderSOList() {
+  const rows = DB.mySOs().slice().reverse();
+  $('c-so-tbody').innerHTML = rows.length ? rows.map(so => `
+    <tr>
+      <td class="col-blue fw-500">${so.id}</td>
+      <td>${so.poId}</td>
+      <td>${so.product}</td>
+      <td>${DB.fmtNum(so.tonaseTotal)} Ton</td>
+      <td>${DB.fmtNum(so.tonaseSisa||so.tonaseTotal)} Ton</td>
+      <td>${badge(so.status)}</td>
+      <td class="col-muted fs-12">${so.catatan||'—'}</td>
+    </tr>`).join('') : `<tr><td colspan="7">${emptyState('Belum ada Sales Order.')}</td></tr>`;
+}
+
+// ── Delivery Request ─────────────────────────
+function renderDRList() {
+  const rows = DB.myDRs().slice().reverse();
+  $('c-dr-tbody').innerHTML = rows.length ? rows.map(dr => `
+    <tr>
+      <td class="col-blue fw-500">${dr.id}</td>
+      <td>${dr.soId}</td>
+      <td>${DB.fmt(dr.tanggalKirim)}</td>
+      <td>${DB.fmtNum(dr.tonase)} Ton</td>
+      <td>${dr.tujuan}</td>
+      <td>${badge(dr.status)}</td>
+    </tr>`).join('') : `<tr><td colspan="6">${emptyState('Belum ada permintaan pengiriman.')}</td></tr>`;
+}
+
+function onDRsoChange() {
+  const soId = $('dr-soId').value;
+  const so = DB.so.find(s => s.id === soId);
+  const info = $('dr-so-info');
+  const infoTxt = $('dr-so-info-text');
+  if (so) {
+    info.style.display = 'flex';
+    infoTxt.textContent = `${so.product} · Total: ${DB.fmtNum(so.tonaseTotal)} Ton · Sisa tersedia: ${DB.fmtNum(so.tonaseSisa)} Ton`;
+    $('dr-tonase').max = so.tonaseSisa;
+  } else {
+    info.style.display = 'none';
+  }
+  calcDRSisa();
+}
+
+function calcDRSisa() {
+  const soId = $('dr-soId').value;
+  const so = DB.so.find(s => s.id === soId);
+  const ton = Number($('dr-tonase').value) || 0;
+  const hint = $('dr-sisa-hint');
+  if (so && ton > 0) {
+    const sisa = so.tonaseSisa - ton;
+    hint.textContent = `Sisa setelah pengiriman ini: ${DB.fmtNum(Math.max(0, sisa))} Ton`;
+    hint.style.color = sisa < 0 ? '#f87171' : 'var(--muted)';
+  } else {
+    hint.textContent = '';
+  }
+}
+
+function openDRForm() {
+  // populate SO dropdown
+  const sel = $('dr-soId');
+  const myReleasedSOs = DB.mySOs().filter(s => s.status === 'released' && s.tonaseSisa > 0);
+  sel.innerHTML = '<option value="">-- Pilih SO yang sudah Released --</option>' +
+    myReleasedSOs.map(s => `<option value="${s.id}">${s.id} — ${s.product} (Sisa: ${DB.fmtNum(s.tonaseSisa)} Ton)</option>`).join('');
+  $('dr-tanggalKirim').value = DB.today();
+  const formBtn = document.querySelectorAll('#csub-dr .tab-btn')[1];
+  tabSwitch('dr', 'form', formBtn);
+}
+
+function submitDR() {
+  // Populate SO dropdown first if not done
+  const myReleasedSOs = DB.mySOs().filter(s => s.status === 'released' && s.tonaseSisa > 0);
+  const sel = $('dr-soId');
+  if (sel.options.length <= 1) {
+    sel.innerHTML = '<option value="">-- Pilih SO yang sudah Released --</option>' +
+      myReleasedSOs.map(s => `<option value="${s.id}">${s.id} — ${s.product} (Sisa: ${DB.fmtNum(s.tonaseSisa)} Ton)</option>`).join('');
+  }
+
+  const soId = sel.value;
+  const tgl  = $('dr-tanggalKirim').value;
+  const ton  = Number($('dr-tonase').value);
+  const tuj  = $('dr-tujuan').value.trim();
+
+  let ok = true;
+  const check = (cond, errId) => { const e = $(errId); if(cond){e.style.display='none';}else{e.style.display='block';ok=false;} };
+
+  check(soId, 'err-drSo');
+  check(tgl, 'err-drTgl');
+
+  const so = DB.so.find(s => s.id === soId);
+  check(ton > 0 && so && ton <= so.tonaseSisa, 'err-drTon');
+  check(tuj, 'err-drTuj');
+
+  if (!ok) { toast('Periksa kembali isian form.', 'error'); return; }
+
+  DB.createDR({ soId, tanggalKirim: tgl, tonase: ton, tujuan: tuj, instruksi: $('dr-instruksi').value.trim() });
+  toast('Permintaan pengiriman berhasil diajukan!', 'success');
+  ['dr-soId','dr-tanggalKirim','dr-tonase','dr-tujuan','dr-instruksi'].forEach(id => { const e=$(id); if(e) e.value=''; });
+  $('dr-so-info').style.display = 'none';
+  const listBtn = document.querySelector('#csub-dr .tab-btn');
+  tabSwitch('dr', 'list', listBtn);
+  renderDRList();
+}
+
+// ── Tracking (customer) ──────────────────────
+function renderCustTracking() {
+  const dos = DB.myDOs();
+  const wrap = $('c-tracking-content');
+  if (!dos.length) { wrap.innerHTML = `<div class="card">${emptyState('Belum ada Delivery Order.')}</div>`; return; }
+
+  wrap.innerHTML = dos.slice().reverse().map(d => `
+    <div class="card mb-16">
+      <div class="flex-between mb-16">
+        <div>
+          <span class="col-blue fw-500">${d.id}</span>
+          <span class="col-muted fs-12" style="margin-left:12px;">${d.customerName}</span>
+        </div>
+        ${badge(d.status)}
+      </div>
+      ${trackingBar(d.trackStatus)}
+      <div class="grid-2 mt-16" style="gap:10px;">
+        <div class="field-box"><div class="field-lbl">Kendaraan</div><div class="field-val">${d.noKendaraan||'—'}</div></div>
+        <div class="field-box"><div class="field-lbl">Driver</div><div class="field-val">${d.driver||'—'}</div></div>
+        <div class="field-box"><div class="field-lbl">Tonase</div><div class="field-val">${DB.fmtNum(d.tonase)} Ton</div></div>
+        <div class="field-box"><div class="field-lbl">Tujuan</div><div class="field-val">${d.tujuan}</div></div>
+      </div>
+      ${d.status==='delivered'||d.trackStatus==='delivered' ? `<div class="alert alert-success mt-16"><span class="alert-icon">✓</span><span>Pengiriman telah tiba. Silakan input penerimaan barang.</span></div>` : ''}
+    </div>
+  `).join('');
+}
+
+function trackingBar(status) {
+  const steps = ['loading','departed','transit','arrived','delivered'];
+  const labels = ['Muat Barang','Berangkat','Dalam Perjalanan','Tiba Lokasi','Diterima'];
+  const cur = steps.indexOf(status);
+  return `<div class="step-tracker">
+    ${steps.map((s,i) => {
+      const done = i < cur; const active = i === cur; const pend = i > cur;
+      const cls = done ? 'st-done' : active ? 'st-active' : 'st-pending';
+      const sym = done ? '✔' : (i+1);
+      const line = i < steps.length-1 ? `<div class="st-line ${i < cur ? 'st-line-done' : 'st-line-pending'}"></div>` : '';
+      return `<div class="st-node"><div class="st-dot ${cls}">${sym}</div><div class="st-lbl">${labels[i]}</div></div>${line}`;
+    }).join('')}
+  </div>`;
+}
+
+// ── Receipt ──────────────────────────────────
+function renderReceiptList() {
+  const rows = DB.myReceipts().slice().reverse();
+  $('c-rcp-tbody').innerHTML = rows.length ? rows.map(r => `
+    <tr>
+      <td class="col-blue fw-500">${r.id}</td>
+      <td>${r.doId}</td>
+      <td>${DB.fmt(r.tanggal)}</td>
+      <td>${r.namaPenerima}</td>
+      <td>${DB.fmtNum(r.timbangan)} Ton</td>
+      <td>${badge(r.verifyStatus)}</td>
+    </tr>`).join('') : `<tr><td colspan="6">${emptyState('Belum ada data penerimaan.')}</td></tr>`;
+}
+
+function openReceiptForm() {
+  const deliveredDOs = DB.myDOs().filter(d => (d.trackStatus === 'delivered' || d.trackStatus === 'arrived') && !d.receiptId);
+  const sel = $('rcp-doId');
+  sel.innerHTML = '<option value="">-- Pilih DO yang Siap Diterima --</option>' +
+    deliveredDOs.map(d => `<option value="${d.id}">${d.id} — ${DB.fmtNum(d.tonase)} Ton — ${d.tujuan}</option>`).join('');
+  $('rcp-tanggal').value = DB.today();
+  const formBtn = document.querySelectorAll('#csub-receipt .tab-btn')[1];
+  tabSwitch('rcp', 'form', formBtn);
+  setTimeout(initSig, 80);
+}
+
+function onRcpDOchange() {
+  const doId = $('rcp-doId').value;
+  const d = DB.doList.find(x => x.id === doId);
+  const info = $('rcp-do-info');
+  if (d) {
+    info.style.display = 'flex';
+    $('rcp-do-info-text').textContent = `${d.product||''} · Tonase DO: ${DB.fmtNum(d.tonase)} Ton · Driver: ${d.driver} (${d.noKendaraan})`;
+  } else {
+    info.style.display = 'none';
+  }
+}
+
+function submitReceipt() {
+  const doId  = $('rcp-doId').value;
+  const tgl   = $('rcp-tanggal').value;
+  const nama  = $('rcp-namaPenerima').value.trim();
+  const jbt   = $('rcp-jabatan').value.trim();
+  const tim   = $('rcp-timbangan').value;
+  const kon   = $('rcp-kondisi').value;
+
+  let ok = true;
+  const chk = (cond, id) => { const e=$(id); if(cond){e.style.display='none';}else{e.style.display='block';ok=false;} };
+  chk(doId, 'err-rcpDo');
+  chk(tgl, 'err-rcpTgl');
+  chk(nama, 'err-rcpNama');
+  chk(jbt, 'err-rcpJbt');
+  chk(tim && Number(tim)>0, 'err-rcpTim');
+  chk(kon, 'err-rcpKon');
+
+  // signature check
+  const hasSig = sigCtx && sigCtx.getImageData(0,0,sigCtx.canvas.width,sigCtx.canvas.height).data.some(v=>v!==0);
+  chk(hasSig, 'err-rcpSig');
+
+  if (!ok) { toast('Periksa kembali isian form.', 'error'); return; }
+
+  const sigDataUrl = sigCtx.canvas.toDataURL();
+  DB.createReceipt({ doId, tanggal: tgl, namaPenerima: nama, jabatan: jbt, timbangan: Number(tim), kondisi: kon, segel: $('rcp-segel').value, catatan: $('rcp-catatan').value }, sigDataUrl);
+  toast('Berita Acara Penerimaan berhasil dikonfirmasi!', 'success');
+  const listBtn = document.querySelector('#csub-receipt .tab-btn');
+  tabSwitch('rcp', 'list', listBtn);
+  renderReceiptList();
+}
+
+// ── Signature ────────────────────────────────
+function initSig() {
+  const canvas = $('sigCanvas');
+  const box = $('sigBox');
+  if (!canvas || !box) return;
+  canvas.width = box.offsetWidth;
+  canvas.height = box.offsetHeight;
+  sigCtx = canvas.getContext('2d');
+  sigCtx.strokeStyle = '#006ceb';
+  sigCtx.lineWidth = 2;
+  sigCtx.lineCap = 'round';
+  sigCtx.lineJoin = 'round';
+}
+
+function sigPos(e) {
+  const r = $('sigCanvas').getBoundingClientRect();
+  if (e.touches) return { x: e.touches[0].clientX - r.left, y: e.touches[0].clientY - r.top };
+  return { x: e.clientX - r.left, y: e.clientY - r.top };
+}
+
+function sigStart(e) {
+  if (!sigCtx) return;
+  e.preventDefault();
+  sigActive = true;
+  const p = sigPos(e);
+  sigCtx.beginPath();
+  sigCtx.moveTo(p.x, p.y);
+  $('sigHint').style.display = 'none';
+}
+
+function sigDraw(e) {
+  if (!sigActive || !sigCtx) return;
+  e.preventDefault();
+  const p = sigPos(e);
+  sigCtx.lineTo(p.x, p.y);
+  sigCtx.stroke();
+}
+
+function sigStop() { sigActive = false; }
+
+function sigClear() {
+  if (sigCtx) {
+    sigCtx.clearRect(0, 0, sigCtx.canvas.width, sigCtx.canvas.height);
+    $('sigHint').style.display = 'flex';
+  }
+}
+
+// ════════════════════════════════════════════
+//  ADMIN
+// ════════════════════════════════════════════
+async function initAdmin() {
+  showPage('admin');
+  $('adminNavName').textContent = DB.session.name;
+  $('adminNavAvatar').textContent = DB.session.avatar;
+  if (_sb) {
+    try {
+      const [pos, sos, drs, dos, rcps] = await Promise.all([
+        API.getPOs(null, 'admin'),
+        API.getSOs(null, 'admin'),
+        API.getDRs(null, 'admin'),
+        API.getDOs(null, 'admin'),
+        API.getReceipts(null, 'admin'),
+      ]);
+      DB.po       = pos.map(mapPO);
+      DB.so       = sos.map(mapSO);
+      DB.dr       = drs.map(mapDR);
+      DB.doList   = dos.map(mapDO);
+      DB.receipts = rcps.map(mapRCP);
+    } catch(e) { console.error('Supabase load error:', e); }
+  }
+  adminNav('so');
+}
+
+function adminNav(sub) {
+  document.querySelectorAll('[id^="asub-"]').forEach(p => p.classList.remove('active'));
+  $(`asub-${sub}`).classList.add('active');
+  document.querySelectorAll('[id^="anl-"]').forEach(l => l.classList.remove('active'));
+  $(`anl-${sub}`)?.classList.add('active');
+
+  const renders = {
+    so: renderAdminSO,
+    do: renderAdminDO,
+    tracking: renderAdminTracking,
+    verify: renderAdminVerify,
+  };
+  (renders[sub] || (() => {}))();
+}
+
+// ── admin dashboard ──────────────────────────
+function renderAdminDash() {
+  const allPOs = DB.po;
+  const allSOs = DB.so;
+  const allDOs = DB.doList;
+  const allRCP = DB.receipts;
+
+  $('a-stats').innerHTML = [
+    ['stat-card', `<div class="stat-num">${allPOs.length}</div><div class="stat-lbl">Total PO Masuk</div>`],
+    ['stat-card', `<div class="stat-num">${allSOs.filter(s=>s.status==='pending').length}</div><div class="stat-lbl">SO Menunggu</div>`],
+    ['stat-card', `<div class="stat-num">${allDOs.filter(d=>d.status!=='closed').length}</div><div class="stat-lbl">DO Aktif</div>`],
+    ['stat-card', `<div class="stat-num">${allRCP.filter(r=>r.verifyStatus==='pending').length}</div><div class="stat-lbl">TTD Menunggu</div>`],
+  ].map(([c,h]) => `<div class="${c}">${h}</div>`).join('');
+
+  // pending SOs
+  const pendingSOs = allSOs.filter(s => s.status === 'pending');
+  $('a-dash-so').innerHTML = pendingSOs.length ? pendingSOs.map(s => `
+    <div class="flex-between" style="padding:10px 0;border-bottom:1px solid var(--navy-border);">
+      <div>
+        <span class="col-blue fw-500">${s.id}</span>
+        <span class="col-muted fs-12" style="margin-left:8px;">${s.customerName}</span>
+        <div class="col-muted" style="font-size:11px;">${s.product} · ${DB.fmtNum(s.tonaseTotal)} Ton</div>
+      </div>
+      <button class="btn btn-primary btn-sm" onclick="openSOModal('${s.id}')">Review</button>
+    </div>`).join('') : emptyState('Tidak ada SO menunggu verifikasi.');
+
+  // pending receipts
+  const pendingRCP = allRCP.filter(r => r.verifyStatus === 'pending');
+  $('a-dash-verify').innerHTML = pendingRCP.length ? pendingRCP.map(r => `
+    <div class="flex-between" style="padding:10px 0;border-bottom:1px solid var(--navy-border);">
+      <div>
+        <span class="col-blue fw-500">${r.id}</span>
+        <span class="col-muted fs-12" style="margin-left:8px;">${r.customerName}</span>
+        <div class="col-muted" style="font-size:11px;">${r.doId} · ${DB.fmtNum(r.timbangan)} Ton</div>
+      </div>
+      <button class="btn btn-primary btn-sm" onclick="openVerifyModal('${r.id}')">Verifikasi</button>
+    </div>`).join('') : emptyState('Tidak ada BAPB menunggu verifikasi.');
+}
+
+// ── admin SO ─────────────────────────────────
+function renderAdminSO() {
+  const pending = DB.so.filter(s => s.status === 'pending');
+  $('a-so-pending-tbody').innerHTML = pending.length ? pending.map(s => `
+    <tr>
+      <td class="col-blue fw-500">${s.id}</td>
+      <td>${s.poId}</td>
+      <td>${s.customerName}</td>
+      <td>${s.product}</td>
+      <td>${DB.fmtNum(s.tonaseTotal)} Ton</td>
+      <td>${DB.fmt(s.createdAt)}</td>
+      <td><button class="btn btn-primary btn-sm" onclick="openSOModal('${s.id}')">Review</button></td>
+    </tr>`).join('') : `<tr><td colspan="7">${emptyState('Tidak ada SO pending.')}</td></tr>`;
+
+  $('a-so-all-tbody').innerHTML = DB.so.slice().reverse().map(s => `
+    <tr>
+      <td class="col-blue fw-500">${s.id}</td>
+      <td>${s.poId}</td>
+      <td>${s.customerName}</td>
+      <td>${s.product}</td>
+      <td>${DB.fmtNum(s.tonaseTotal)} Ton</td>
+      <td>${badge(s.status)}</td>
+      <td class="col-muted fs-12">${s.catatan||'—'}</td>
+    </tr>`).join('') || `<tr><td colspan="7">${emptyState('Belum ada SO.')}</td></tr>`;
+}
+
+function openSOModal(soId) {
+  const so = DB.so.find(s => s.id === soId);
+  if (!so) return;
+  currentSOId = soId;
+  $('modal-so-title').textContent = `Review SO: ${soId}`;
+  $('modal-so-catatan').value = '';
+  $('modal-so-detail').innerHTML = `
+    <div class="grid-2" style="gap:10px;">
+      <div class="field-box"><div class="field-lbl">No. SO</div><div class="field-val col-blue">${so.id}</div></div>
+      <div class="field-box"><div class="field-lbl">Ref. PO</div><div class="field-val">${so.poId}</div></div>
+      <div class="field-box"><div class="field-lbl">Customer</div><div class="field-val">${so.customerName}</div></div>
+      <div class="field-box"><div class="field-lbl">Produk</div><div class="field-val">${so.product}</div></div>
+      <div class="field-box"><div class="field-lbl">Tonase</div><div class="field-val">${DB.fmtNum(so.tonaseTotal)} Ton</div></div>
+      <div class="field-box"><div class="field-lbl">Lokasi Kirim</div><div class="field-val">${so.lokasi}</div></div>
+    </div>`;
+  openModal('modal-so');
+}
+
+function soAction(action) {
+  const catatan = $('modal-so-catatan').value.trim();
+  DB.updateSO(currentSOId, action, catatan);
+  closeModal('modal-so');
+  toast(action === 'approve' ? 'SO berhasil disetujui!' : 'SO ditolak.', action === 'approve' ? 'success' : 'error');
+  renderAdminSO();
+  renderAdminDash();
+}
+
+// ── admin DO ─────────────────────────────────
+function renderAdminDO() {
+  const pendingDRs = DB.dr.filter(d => d.status === 'pending');
+  $('a-dr-pending-tbody').innerHTML = pendingDRs.length ? pendingDRs.map(dr => `
+    <tr>
+      <td class="col-blue fw-500">${dr.id}</td>
+      <td>${dr.customerName}</td>
+      <td>${dr.product||'—'}</td>
+      <td>${DB.fmt(dr.tanggalKirim)}</td>
+      <td>${DB.fmtNum(dr.tonase)} Ton</td>
+      <td>${dr.tujuan}</td>
+      <td><button class="btn btn-primary btn-sm" onclick="openDOModal('${dr.id}')">Buat DO</button></td>
+    </tr>`).join('') : `<tr><td colspan="7">${emptyState('Tidak ada DR menunggu.')}</td></tr>`;
+
+  $('a-do-all-tbody').innerHTML = DB.doList.slice().reverse().map(d => `
+    <tr>
+      <td class="col-blue fw-500">${d.id}</td>
+      <td>${d.customerName}</td>
+      <td>${d.noKendaraan}</td>
+      <td>${d.driver}</td>
+      <td>${DB.fmtNum(d.tonase)} Ton</td>
+      <td>${badge(d.status)}</td>
+      <td><div class="tbl-actions">
+        <button class="btn btn-ghost btn-sm" onclick="openTrackModal('${d.id}')">Update Track</button>
+      </div></td>
+    </tr>`).join('') || `<tr><td colspan="7">${emptyState('Belum ada DO.')}</td></tr>`;
+}
+
+function openDOModal(drId) {
+  const dr = DB.dr.find(d => d.id === drId);
+  if (!dr) return;
+  currentDRId = drId;
+  $('do-kendaraan').value = '';
+  $('do-driver').value = '';
+  $('do-telDriver').value = '';
+  $('do-tonase').value = dr.tonase;
+  $('modal-do-detail').innerHTML = `
+    <div class="alert alert-info mb-16"><span class="alert-icon">ℹ</span>
+    <span>DR: <strong>${dr.id}</strong> · Customer: ${dr.customerName} · ${dr.product||''} · ${DB.fmtNum(dr.tonase)} Ton · Tujuan: ${dr.tujuan}</span></div>`;
+  openModal('modal-do');
+}
+
+function submitDO() {
+  const kend = $('do-kendaraan').value.trim();
+  const drv  = $('do-driver').value.trim();
+  const ton  = $('do-tonase').value;
+  if (!kend || !drv || !ton) { toast('No. kendaraan, driver, dan tonase wajib diisi.', 'error'); return; }
+
+  DB.createDO({
+    drId: currentDRId,
+    tonase: Number(ton),
+    noKendaraan: kend,
+    driver: drv,
+    telDriver: $('do-telDriver').value,
+    terminal: $('do-terminal').value,
+    tujuan: DB.dr.find(d=>d.id===currentDRId)?.tujuan||'',
+  });
+  closeModal('modal-do');
+  toast('Delivery Order berhasil diposting!', 'success');
+  renderAdminDO();
+  renderAdminDash();
+}
+
+// ── admin tracking ───────────────────────────
+function renderAdminTracking() {
+  const dos = DB.doList.filter(d => d.status !== 'closed');
+  const wrap = $('a-tracking-content');
+  if (!dos.length) { wrap.innerHTML = `<div class="card">${emptyState('Tidak ada DO aktif.')}</div>`; return; }
+
+  wrap.innerHTML = dos.slice().reverse().map(d => `
+    <div class="card mb-16">
+      <div class="flex-between mb-16">
+        <div>
+          <span class="col-blue fw-500">${d.id}</span>
+          <span class="col-muted fs-12" style="margin-left:10px;">${d.customerName} · ${d.noKendaraan}</span>
+        </div>
+        <button class="btn btn-outline btn-sm" onclick="openTrackModal('${d.id}')">Update Status</button>
+      </div>
+      ${trackingBar(d.trackStatus)}
+      <div class="grid-2 mt-16" style="gap:10px;">
+        <div class="field-box"><div class="field-lbl">Driver</div><div class="field-val">${d.driver} · ${d.telDriver||'—'}</div></div>
+        <div class="field-box"><div class="field-lbl">Terminal Asal</div><div class="field-val">${d.terminal}</div></div>
+        <div class="field-box"><div class="field-lbl">Tujuan</div><div class="field-val">${d.tujuan}</div></div>
+        <div class="field-box"><div class="field-lbl">Tonase</div><div class="field-val">${DB.fmtNum(d.tonase)} Ton</div></div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function openTrackModal(doId) {
+  currentDOId = doId;
+  const d = DB.doList.find(x => x.id === doId);
+  $('track-do-id').textContent = `${doId} — ${d?.customerName||''}`;
+  $('track-status').value = d?.trackStatus || 'loading';
+  openModal('modal-track');
+}
+
+function submitTracking() {
+  DB.updateTracking(currentDOId, $('track-status').value);
+  closeModal('modal-track');
+  toast('Status tracking berhasil diupdate!', 'success');
+  renderAdminTracking();
+}
+
+// ── admin verify ─────────────────────────────
+function renderAdminVerify() {
+  const pending = DB.receipts.filter(r => r.verifyStatus === 'pending');
+  $('a-rcp-pending-tbody').innerHTML = pending.length ? pending.map(r => `
+    <tr>
+      <td class="col-blue fw-500">${r.id}</td>
+      <td>${r.doId}</td>
+      <td>${r.customerName}</td>
+      <td>${r.namaPenerima}</td>
+      <td>${DB.fmt(r.tanggal)}</td>
+      <td>${DB.fmtNum(r.timbangan)} Ton</td>
+      <td><button class="btn btn-primary btn-sm" onclick="openVerifyModal('${r.id}')">Verifikasi</button></td>
+    </tr>`).join('') : `<tr><td colspan="7">${emptyState('Tidak ada BAPB menunggu verifikasi.')}</td></tr>`;
+
+  $('a-rcp-all-tbody').innerHTML = DB.receipts.slice().reverse().map(r => `
+    <tr>
+      <td class="col-blue fw-500">${r.id}</td>
+      <td>${r.doId}</td>
+      <td>${r.customerName}</td>
+      <td>${DB.fmtNum(r.timbangan)} Ton</td>
+      <td>${badge(r.verifyStatus)}</td>
+      <td>${r.verifiedBy||'—'}</td>
+      <td>${DB.fmt(r.verifiedAt)}</td>
+    </tr>`).join('') || `<tr><td colspan="7">${emptyState('Belum ada BAPB.')}</td></tr>`;
+}
+
+function openVerifyModal(rcpId) {
+  const r = DB.receipts.find(x => x.id === rcpId);
+  if (!r) return;
+  currentRCPId = rcpId;
+  $('modal-verify-catatan').value = '';
+
+  const d = DB.doList.find(x => x.id === r.doId);
+  const selisih = d ? (Number(r.timbangan) - Number(d.tonase)).toFixed(2) : '—';
+  const selisihColor = Math.abs(selisih) > 0.5 ? 'col-red' : 'col-amber';
+
+  $('modal-verify-detail').innerHTML = `
+    <div class="grid-2" style="gap:10px;">
+      <div class="field-box"><div class="field-lbl">No. BAPB</div><div class="field-val col-blue">${r.id}</div></div>
+      <div class="field-box"><div class="field-lbl">Ref. DO</div><div class="field-val">${r.doId}</div></div>
+      <div class="field-box"><div class="field-lbl">Customer</div><div class="field-val">${r.customerName}</div></div>
+      <div class="field-box"><div class="field-lbl">Tanggal Terima</div><div class="field-val">${DB.fmt(r.tanggal)}</div></div>
+      <div class="field-box"><div class="field-lbl">Penerima</div><div class="field-val">${r.namaPenerima} (${r.jabatan})</div></div>
+      <div class="field-box"><div class="field-lbl">Kondisi</div><div class="field-val">${r.kondisi}</div></div>
+      <div class="field-box"><div class="field-lbl">Tonase DO</div><div class="field-val">${d ? DB.fmtNum(d.tonase) : '—'} Ton</div></div>
+      <div class="field-box"><div class="field-lbl">Timbangan Aktual</div><div class="field-val">${DB.fmtNum(r.timbangan)} Ton</div></div>
+    </div>
+    <div class="alert ${Math.abs(selisih) > 0.5 ? 'alert-error' : 'alert-warn'} mt-16">
+      <span class="alert-icon">⚠</span>
+      <span>Selisih timbangan: <strong>${selisih} Ton</strong> ${Math.abs(selisih) <= 0.5 ? '(dalam batas toleransi ±0.5T)' : '(melebihi toleransi — perlu perhatian)'}</span>
+    </div>
+    ${r.sigDataUrl ? `<div style="margin-top:12px;">
+      <div class="field-lbl" style="margin-bottom:8px;">Preview Tanda Tangan Digital</div>
+      <div style="border:1px solid var(--navy-border);background:rgba(10,15,30,.6);padding:4px;">
+        <img src="${r.sigDataUrl}" style="max-height:90px;display:block;" alt="Tanda tangan"/>
+      </div>
+    </div>` : ''}`;
+
+  openModal('modal-verify');
+}
+
+function verifyAction(action) {
+  const catatan = $('modal-verify-catatan').value.trim();
+  DB.verifyReceipt(currentRCPId, action, catatan);
+  closeModal('modal-verify');
+  toast(action === 'approve' ? 'BAPB berhasil diverifikasi!' : 'BAPB ditolak.', action === 'approve' ? 'success' : 'error');
+  renderAdminVerify();
+  renderAdminDash();
+}
+
+// ── helpers ──────────────────────────────────
+function emptyState(msg) {
+  return `<div class="empty-state"><div class="empty-icon">○</div><div class="empty-text">${msg}</div></div>`;
+}
+
+// ── keyboard ────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && $('page-login').classList.contains('active')) doLogin();
+  if (e.key === 'Escape') document.querySelectorAll('.modal-bg.open').forEach(m => m.classList.remove('open'));
+});
+
+
+// ── Supabase row mappers (snake_case → camelCase) ──────────
+function mapPO(r) {
+  if (!r) return r;
+  return {
+    id: r.id, noPO: r.no_po,
+    tanggalPO: r.tanggal_po, product: r.product,
+    tonase: r.tonase, harga: r.harga,
+    lokasi: r.lokasi, catatan: r.catatan,
+    status: r.status, soId: r.so_id,
+    customerId: r.customer_id, customerName: r.customer_name,
+    createdAt: r.created_at
+  };
+}
+function mapSO(r) {
+  if (!r) return r;
+  return {
+    id: r.id, noSO: r.no_so, poId: r.po_id,
+    customerId: r.customer_id, customerName: r.customer_name,
+    product: r.product,
+    tonaseTotal: r.tonase_total, tonaseSisa: r.tonase_sisa,
+    harga: r.harga, lokasi: r.lokasi,
+    status: r.status, catatan: r.catatan,
+    approvedAt: r.approved_at, approvedBy: r.approved_by,
+    createdAt: r.created_at
+  };
+}
+function mapDR(r) {
+  if (!r) return r;
+  return {
+    id: r.id, noDR: r.no_dr, soId: r.so_id,
+    customerId: r.customer_id, customerName: r.customer_name,
+    product: r.product, soTonaseTotal: r.so_tonase_total,
+    tanggalKirim: r.tanggal_kirim, tonase: r.tonase,
+    tujuan: r.tujuan, instruksi: r.instruksi,
+    status: r.status, doId: r.do_id,
+    createdAt: r.created_at
+  };
+}
+function mapDO(r) {
+  if (!r) return r;
+  return {
+    id: r.id, noDO: r.no_do, drId: r.dr_id, soId: r.so_id,
+    customerId: r.customer_id, customerName: r.customer_name,
+    product: r.product, tonase: r.tonase, tujuan: r.tujuan,
+    noKendaraan: r.no_kendaraan, driver: r.driver, telDriver: r.tel_driver,
+    terminal: r.terminal, status: r.status, trackStatus: r.track_status,
+    postedAt: r.posted_at, receiptId: r.receipt_id,
+    createdAt: r.created_at
+  };
+}
+function mapRCP(r) {
+  if (!r) return r;
+  return {
+    id: r.id, noReceipt: r.no_receipt, invId: r.no_invoice,
+    doId: r.do_id,
+    customerId: r.customer_id, customerName: r.customer_name,
+    tanggal: r.tanggal, namaPenerima: r.nama_penerima,
+    jabatan: r.jabatan, timbangan: r.timbangan,
+    kondisi: r.kondisi, segel: r.segel, catatan: r.catatan,
+    sigDataUrl: r.sig_data_url,
+    verifyStatus: r.verify_status, verifyCatatan: r.verify_catatan,
+    verifiedAt: r.verified_at, verifiedBy: r.verified_by,
+    createdAt: r.created_at
+  };
+}
+
+// Patch doLogin to use API
+async function doLoginAsync() {
+  const u = $('loginUser').value.trim();
+  const p = $('loginPass').value.trim();
+  $('loginErr').style.display = 'none';
+
+  if (_sb) {
+    // Supabase mode
+    try {
+      const { data, error } = await API.login(u, p);
+      if (!data || error) {
+        $('loginErr').style.display = 'block'; return;
+      }
+      DB.session = {
+        id: data.id, role: data.role, name: data.name,
+        company: data.company, avatar: data.avatar, username: data.username
+      };
+    } catch(e) {
+      $('loginErr').style.display = 'block'; return;
+    }
+  } else {
+    // Local mode
+    const user = DB.users.find(x => x.username===u && x.password===p && x.role===selectedRole);
+    if (!user) { $('loginErr').style.display = 'block'; return; }
+    DB.session = user;
+  }
+
+  if (DB.session.role === 'customer') await initCustomer();
+  else await initAdmin();
+}
+</script>
+</body>
+</html>
