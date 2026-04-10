@@ -1474,6 +1474,50 @@ const DB = {
   },
 };
 
+
+// ══════════════════════════════════════════════════════
+//  PERSISTENCE LAYER — localStorage
+//  Menyimpan semua data agar tidak hilang setelah logout
+// ══════════════════════════════════════════════════════
+const LS_KEY = 'dmk_portal_v1';
+
+function lsSave() {
+  try {
+    const snapshot = {
+      po:       DB.po,
+      so:       DB.so,
+      dr:       DB.dr,
+      doList:   DB.doList,
+      receipts: DB.receipts,
+      counters: DB.counters,
+    };
+    localStorage.setItem(LS_KEY, JSON.stringify(snapshot));
+  } catch(e) { console.warn('localStorage save error:', e); }
+}
+
+function lsLoad() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return false;
+    const snap = JSON.parse(raw);
+    if (snap.po?.length || snap.so?.length || snap.doList?.length || snap.receipts?.length) {
+      DB.po       = snap.po       || [];
+      DB.so       = snap.so       || [];
+      DB.dr       = snap.dr       || [];
+      DB.doList   = snap.doList   || [];
+      DB.receipts = snap.receipts || [];
+      DB.counters = snap.counters || { po:1, so:1, dr:1, do:1, rcp:1, inv:1 };
+      return true; // ada data tersimpan — skip seedDemo
+    }
+    return false;
+  } catch(e) { console.warn('localStorage load error:', e); return false; }
+}
+
+function lsClear() {
+  localStorage.removeItem(LS_KEY);
+  location.reload();
+}
+
 // ── seed demo data ────────────────────────────
 function seedDemo() {
   const admin  = DB.users.find(u => u.id === 'A001');
@@ -1643,7 +1687,10 @@ function seedDemo() {
   DB.session = null;
 }
 
-try { seedDemo(); } catch(e) { console.warn('Seed skipped:', e); }
+// Muat dari localStorage dulu; jalankan seed hanya jika belum ada data
+if (!lsLoad()) {
+  try { seedDemo(); lsSave(); } catch(e) { console.warn('Seed error:', e); }
+}
 
 </script>
 <script>
@@ -1672,6 +1719,7 @@ function selectRole(el) {
 function doLogin() { doLoginAsync(); }
 
 function doLogout() {
+  lsSave(); // pastikan semua data tersimpan sebelum logout
   DB.session = null;
   showPage('login');
   $('loginUser').value = '';
@@ -1851,7 +1899,7 @@ function submitPO() {
   });
   if (!ok) { toast('Lengkapi semua field yang wajib diisi.', 'error'); return; }
 
-  DB.createPO({
+  const newPO = DB.createPO({
     noPO: $('po-noPO').value.trim(),
     tanggalPO: $('po-tanggal').value,
     product: $('po-product').value,
@@ -1860,6 +1908,17 @@ function submitPO() {
     lokasi: $('po-lokasi').value.trim(),
     catatan: $('po-catatan').value.trim(),
   });
+
+  // Simpan ke localStorage
+  lsSave();
+
+  // Simpan ke Supabase jika terhubung
+  if (_sb) {
+    API.createPO({
+      noPO: newPO.id, tanggalPO: newPO.tanggalPO, product: newPO.product,
+      tonase: newPO.tonase, harga: newPO.harga, lokasi: newPO.lokasi, catatan: newPO.catatan
+    }).catch(e => console.error('Supabase createPO error:', e));
+  }
 
   toast('Purchase Order berhasil dikirim!', 'success');
   resetPOForm();
@@ -1986,7 +2045,12 @@ function submitDR() {
 
   if (!ok) { toast('Periksa kembali isian form.', 'error'); return; }
 
-  DB.createDR({ soId, tanggalKirim: tgl, tonase: ton, tujuan: tuj, instruksi: $('dr-instruksi').value.trim() });
+  const newDR = DB.createDR({ soId, tanggalKirim: tgl, tonase: ton, tujuan: tuj, instruksi: $('dr-instruksi').value.trim() });
+  lsSave();
+  if (_sb) {
+    API.createDR({ soId: newDR.soId, tanggalKirim: newDR.tanggalKirim, tonase: newDR.tonase, tujuan: newDR.tujuan, instruksi: newDR.instruksi })
+      .catch(e => console.error('Supabase createDR error:', e));
+  }
   toast('Permintaan pengiriman berhasil diajukan!', 'success');
   ['dr-soId','dr-tanggalKirim','dr-tonase','dr-tujuan','dr-instruksi'].forEach(id => { const e=$(id); if(e) e.value=''; });
   $('dr-so-info').style.display = 'none';
@@ -2098,7 +2162,15 @@ function submitReceipt() {
   if (!ok) { toast('Periksa kembali isian form.', 'error'); return; }
 
   const sigDataUrl = sigCtx.canvas.toDataURL();
-  DB.createReceipt({ doId, tanggal: tgl, namaPenerima: nama, jabatan: jbt, timbangan: Number(tim), kondisi: kon, segel: $('rcp-segel').value, catatan: $('rcp-catatan').value }, sigDataUrl);
+  const newRCP = DB.createReceipt({ doId, tanggal: tgl, namaPenerima: nama, jabatan: jbt, timbangan: Number(tim), kondisi: kon, segel: $('rcp-segel').value, catatan: $('rcp-catatan').value }, sigDataUrl);
+  lsSave();
+  if (_sb) {
+    API.createReceipt({
+      doId: newRCP.doId, tanggal: newRCP.tanggal, namaPenerima: newRCP.namaPenerima,
+      jabatan: newRCP.jabatan, timbangan: newRCP.timbangan, kondisi: newRCP.kondisi,
+      segel: newRCP.segel, catatan: newRCP.catatan
+    }, sigDataUrl).catch(e => console.error('Supabase createReceipt error:', e));
+  }
   toast('Berita Acara Penerimaan berhasil dikonfirmasi!', 'success');
   const listBtn = document.querySelector('#csub-receipt .tab-btn');
   tabSwitch('rcp', 'list', listBtn);
@@ -2279,6 +2351,11 @@ function openSOModal(soId) {
 function soAction(action) {
   const catatan = $('modal-so-catatan').value.trim();
   DB.updateSO(currentSOId, action, catatan);
+  lsSave();
+  if (_sb) {
+    API.updateSO(currentSOId, action, catatan)
+      .catch(e => console.error('Supabase updateSO error:', e));
+  }
   closeModal('modal-so');
   toast(action === 'approve' ? 'SO berhasil disetujui!' : 'SO ditolak.', action === 'approve' ? 'success' : 'error');
   renderAdminSO();
@@ -2333,7 +2410,7 @@ function submitDO() {
   const ton  = $('do-tonase').value;
   if (!kend || !drv || !ton) { toast('No. kendaraan, driver, dan tonase wajib diisi.', 'error'); return; }
 
-  DB.createDO({
+  const newDO = DB.createDO({
     drId: currentDRId,
     tonase: Number(ton),
     noKendaraan: kend,
@@ -2342,6 +2419,13 @@ function submitDO() {
     terminal: $('do-terminal').value,
     tujuan: DB.dr.find(d=>d.id===currentDRId)?.tujuan||'',
   });
+  lsSave();
+  if (_sb) {
+    API.createDO({
+      drId: newDO.drId, tonase: newDO.tonase, noKendaraan: newDO.noKendaraan,
+      driver: newDO.driver, telDriver: newDO.telDriver, terminal: newDO.terminal
+    }).catch(e => console.error('Supabase createDO error:', e));
+  }
   closeModal('modal-do');
   toast('Delivery Order berhasil diposting!', 'success');
   renderAdminDO();
@@ -2383,7 +2467,13 @@ function openTrackModal(doId) {
 }
 
 function submitTracking() {
-  DB.updateTracking(currentDOId, $('track-status').value);
+  const newStatus = $('track-status').value;
+  DB.updateTracking(currentDOId, newStatus);
+  lsSave();
+  if (_sb) {
+    API.updateDOTracking(currentDOId, newStatus)
+      .catch(e => console.error('Supabase updateTracking error:', e));
+  }
   closeModal('modal-track');
   toast('Status tracking berhasil diupdate!', 'success');
   renderAdminTracking();
@@ -2453,6 +2543,11 @@ function openVerifyModal(rcpId) {
 function verifyAction(action) {
   const catatan = $('modal-verify-catatan').value.trim();
   DB.verifyReceipt(currentRCPId, action, catatan);
+  lsSave();
+  if (_sb) {
+    API.verifyReceipt(currentRCPId, action, catatan)
+      .catch(e => console.error('Supabase verifyReceipt error:', e));
+  }
   closeModal('modal-verify');
   toast(action === 'approve' ? 'BAPB berhasil diverifikasi!' : 'BAPB ditolak.', action === 'approve' ? 'success' : 'error');
   renderAdminVerify();
