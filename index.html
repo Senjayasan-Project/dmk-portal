@@ -12,7 +12,7 @@
 // ══════════════════════════════════════════════════════
 const SUPABASE_URL      = 'https://slrjqrynjqftfivoarmw.supabase.co';
 const SUPABASE_ANON_KEY ='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNscmpxcnluanFmdGZpdm9hcm13Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3MTkyNDQsImV4cCI6MjA5MTI5NTI0NH0.iRKpYEyM4rEkxKM36lMTRFgP8GKDKMP8pTXfo02i4Lg';
-const _sb = (SUPABASE_URL.includes('YOUR_PROJECT_ID'))
+const _sb = (SUPABASE_URL.includes('slrjqrynjqftfivoarmw'))
   ? null  // belum dikonfigurasi — pakai data lokal
   : supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
