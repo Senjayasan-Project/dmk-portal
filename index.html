@@ -10,11 +10,54 @@
 //  Ganti SUPABASE_URL dan SUPABASE_ANON_KEY dengan
 //  nilai dari: Supabase Dashboard → Settings → API
 // ══════════════════════════════════════════════════════
-const SUPABASE_URL      = 'https://slrjqrynjqftfivoarmw.supabase.co';
-const SUPABASE_ANON_KEY ='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNscmpxcnluanFmdGZpdm9hcm13Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3MTkyNDQsImV4cCI6MjA5MTI5NTI0NH0.iRKpYEyM4rEkxKM36lMTRFgP8GKDKMP8pTXfo02i4Lg';
-const _sb = (SUPABASE_URL.includes('slrjqrynjqftfivoarmw'))
-  ? null  // belum dikonfigurasi — pakai data lokal
-  : supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// ══════════════════════════════════════════════════════════════
+//  ▼▼▼  KONFIGURASI SUPABASE — ISI DI BAWAH INI  ▼▼▼
+//  Langkah:
+//  1. Buka https://supabase.com/dashboard → pilih project Anda
+//  2. Klik Settings (icon ⚙) → API
+//  3. Copy "Project URL" → paste ke SUPABASE_URL
+//  4. Copy "anon / public" key → paste ke SUPABASE_ANON_KEY
+// ══════════════════════════════════════════════════════════════
+const SUPABASE_URL      = 'https://YOUR_PROJECT_ID.supabase.co';   // ← ganti ini
+const SUPABASE_ANON_KEY = 'YOUR_ANON_PUBLIC_KEY';                   // ← ganti ini
+// ══════════════════════════════════════════════════════════════
+
+// Validasi dan inisialisasi Supabase client
+function _initSupabase() {
+  const isConfigured = SUPABASE_URL   && !SUPABASE_URL.includes('YOUR_PROJECT_ID') &&
+                       SUPABASE_ANON_KEY && !SUPABASE_ANON_KEY.includes('YOUR_ANON');
+  if (!isConfigured) {
+    console.info('[DMK Portal] Supabase belum dikonfigurasi → mode offline (localStorage)');
+    return null;
+  }
+  try {
+    const client = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: { persistSession: false },
+      global: { headers: { 'x-application-name': 'dmk-portal' } }
+    });
+    console.info('[DMK Portal] Supabase client berhasil diinisialisasi:', SUPABASE_URL);
+    return client;
+  } catch(e) {
+    console.error('[DMK Portal] Gagal inisialisasi Supabase:', e.message);
+    return null;
+  }
+}
+
+// Inisialisasi Supabase — library CDN harus sudah termuat
+let _sb = null;
+(function() {
+  try {
+    if (typeof supabase === 'undefined' || typeof supabase.createClient !== 'function') {
+      console.warn('[DMK Portal] Supabase JS library tidak tersedia. Pastikan CDN dapat diakses.');
+      return;
+    }
+    _sb = _initSupabase();
+  } catch(e) {
+    console.error('[DMK Portal] Error saat inisialisasi Supabase:', e);
+    _sb = null;
+  }
+})();
+
 // ══════════════════════════════════════════════════════
 //  API LAYER — semua operasi DB lewat sini
 //  Jika _sb null (offline/demo), fallback ke DB lokal
@@ -223,7 +266,7 @@ window.addEventListener('DOMContentLoaded', () => {
     b.id = 'supabase-banner';
     b.innerHTML = `<span>⚡ Mode Offline — Data disimpan lokal (demo). Untuk koneksi Supabase, isi SUPABASE_URL & SUPABASE_ANON_KEY di konfigurasi.</span>
       <a href="https://supabase.com/dashboard" target="_blank" style="color:#fff;text-decoration:underline;margin-left:12px;">Buka Supabase →</a>`;
-       b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#0057B8;color:#fff;font-size:11px;padding:8px 20px;display:flex;align-items:center;gap:8px;border-top:2px solid #1A73E8;';
+    b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#0057B8;color:#fff;font-size:11px;padding:8px 20px;display:flex;align-items:center;gap:8px;border-top:2px solid #1A73E8;';
     document.body.appendChild(b);
   }
 });
@@ -234,7 +277,6 @@ window.addEventListener('DOMContentLoaded', () => {
 @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,300&display=swap');
 
 :root {
-  /* ── Core Brand (DMK Corporate White-Blue) ── */
   /* ── Core Brand (DMK Corporate White-Blue) ── */
   --navy:         #F4F6FA;      /* page background → off-white */
   --navy-mid:     #FFFFFF;      /* card / modal background → white */
@@ -279,25 +321,20 @@ body {
   overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
 }
-  /* scrollbar — light mode */
-::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-track { background: #EEF1F7; }
-::-webkit-scrollbar-thumb { background: #C0CCE8; border-radius: 3px; }
 /* scrollbar — light mode */
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: #EEF1F7; }
 ::-webkit-scrollbar-thumb { background: #C0CCE8; border-radius: 3px; }
-::-webkit-scrollbar { width: 4px; }
-::-webkit-scrollbar-track { background: var(--navy); }
-::-webkit-scrollbar-thumb { background: var(--navy-border); }
+
 
 a { color: inherit; text-decoration: none; }
 input, select, textarea, button { font-family: 'DM Sans', sans-serif; }
-input[type="date"] { color-scheme: dark; }
+input[type="date"] { color-scheme: light; }
 
 /* ── PAGE SHELL ── */
 .page { display: none; min-height: 100vh; }
 .page.active { display: flex; flex-direction: column; }
+#page-admin.active { display: block; }
 
 /* ── NAV ── */
 .topnav {
@@ -347,17 +384,14 @@ input[type="date"] { color-scheme: dark; }
   border: 1px solid var(--navy-border); background: transparent;
   transition: color .2s, border-color .2s;
 }
-.nav-logout:hover { color: var(--white); border-color: var(--muted); }
+.nav-logout:hover { color: var(--red); border-color: var(--red); }
 
 /* ── MAIN CONTENT ── */
 .main-content { padding-top: 64px; flex: 1; }
+.admin-main .main-content { padding-top: 0; }
 
 /* ── PAGE HEADER ── */
-.page-header {
-  padding: 48px 40px 32px;
-  border-bottom: 1px solid var(--navy-border);
-  background: linear-gradient(180deg, rgba(0,108,235,0.04) 0%, transparent 100%);
-}
+/* page-header: see unified rule above */
 .page-eyebrow {
   display: inline-flex; align-items: center; gap: 10px;
   font-size: 10px; font-weight: 600; letter-spacing: 2.5px; text-transform: uppercase;
@@ -370,6 +404,36 @@ input[type="date"] { color-scheme: dark; }
   color: var(--white); margin-bottom: 8px;
 }
 .page-sub { font-size: 13px; color: var(--muted); line-height: 1.6; }
+
+/* ── Page header unified: gradient biru, semua teks putih ── */
+.page-header {
+  padding: 28px 40px 24px;
+  background: linear-gradient(135deg, #0057B8 0%, #1A73E8 100%);
+  border-bottom: none;
+  box-shadow: 0 2px 12px rgba(0,87,184,0.18);
+  position: relative;
+}
+.page-header::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.03'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+  pointer-events: none;
+}
+.page-header .page-eyebrow {
+  color: rgba(255,255,255,0.8) !important;
+  position: relative; z-index: 1;
+}
+.page-header .page-eyebrow::before { background: rgba(255,255,255,0.5) !important; }
+.page-header .page-title {
+  color: #FFFFFF !important;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.15);
+  position: relative; z-index: 1;
+}
+.page-header .page-sub  {
+  color: rgba(255,255,255,0.78) !important;
+  position: relative; z-index: 1;
+}
 
 /* ── CONTAINERS ── */
 .container { max-width: 1080px; margin: 0 auto; padding: 32px 40px; }
@@ -405,7 +469,7 @@ input[type="date"] { color-scheme: dark; }
 }
 .stat-num {
   font-family: 'Playfair Display', serif;
-  font-size: 32px; font-weight: 700; color: var(--blue);
+  font-size: 32px; font-weight: 700; color: #FFFFFF;
   line-height: 1;
 }
 .stat-lbl { font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); margin-top: 6px; }
@@ -692,6 +756,127 @@ input[type="date"] { color-scheme: dark; }
 .fs-12 { font-size: 12px; }
 .fs-13 { font-size: 13px; }
 
+
+/* ════════════════════════════════════════
+   ADMIN CENTER — SIDEBAR LAYOUT
+════════════════════════════════════════ */
+
+/* Admin topbar (menggantikan topnav untuk admin) */
+.admin-topbar {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 300;
+  height: 60px;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 20px 0 16px;
+  background: #FFFFFF;
+  border-bottom: 1px solid var(--navy-border);
+  box-shadow: 0 1px 8px rgba(0,87,184,0.08);
+}
+.admin-topbar-left { display: flex; align-items: center; gap: 12px; }
+.admin-topbar-right { display: flex; align-items: center; gap: 12px; }
+.sidebar-toggle {
+  width: 34px; height: 34px; border: none; background: transparent;
+  font-size: 18px; color: var(--mid); cursor: pointer; border-radius: 6px;
+  display: flex; align-items: center; justify-content: center; transition: background .15s;
+}
+.sidebar-toggle:hover { background: var(--blue-dim); color: var(--blue); }
+
+.admin-notif {
+  position: relative; width: 34px; height: 34px; border: 1px solid var(--navy-border);
+  border-radius: 8px; display: flex; align-items: center; justify-content: center;
+  cursor: pointer; color: var(--mid); transition: all .2s;
+}
+.admin-notif:hover { border-color: var(--blue); color: var(--blue); background: var(--blue-dim); }
+.notif-badge {
+  position: absolute; top: -6px; right: -6px;
+  background: #C0392B; color: #fff; font-size: 9px; font-weight: 700;
+  min-width: 16px; height: 16px; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center; padding: 0 3px;
+}
+
+/* Admin layout container */
+.admin-layout {
+  display: flex;
+  padding-top: 60px;
+  min-height: 100vh;
+}
+
+/* SIDEBAR */
+.admin-sidebar {
+  position: fixed; top: 60px; left: 0; bottom: 0;
+  width: 240px; z-index: 200;
+  background: #FFFFFF;
+  border-right: 1px solid var(--navy-border);
+  display: flex; flex-direction: column;
+  overflow-y: auto; overflow-x: hidden;
+  transition: transform .25s ease, width .25s ease;
+}
+.admin-sidebar.collapsed { transform: translateX(-240px); }
+
+/* Sidebar sections */
+.sidebar-section-label {
+  font-size: 9px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase;
+  color: var(--muted); padding: 20px 16px 6px;
+}
+.sidebar-section-label:first-child { padding-top: 14px; }
+
+.sidebar-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 16px; cursor: pointer;
+  border-left: 3px solid transparent;
+  transition: all .15s; position: relative;
+  color: #4A5568; font-size: 13px; font-weight: 500;
+  user-select: none;
+}
+.sidebar-item:hover {
+  background: var(--blue-dim); color: var(--blue);
+  border-left-color: rgba(0,87,184,0.3);
+}
+.sidebar-item.active {
+  background: var(--blue-dim); color: var(--blue);
+  border-left-color: var(--blue); font-weight: 600;
+}
+.sidebar-icon {
+  display: flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px; flex-shrink: 0; opacity: .75;
+}
+.sidebar-item.active .sidebar-icon,
+.sidebar-item:hover .sidebar-icon { opacity: 1; }
+.sidebar-label { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sidebar-badge {
+  background: var(--blue); color: #fff;
+  font-size: 9px; font-weight: 700; min-width: 18px; height: 18px;
+  border-radius: 9px; display: flex; align-items: center; justify-content: center; padding: 0 4px;
+}
+.sidebar-badge:empty, .sidebar-badge[data-count="0"] { display: none; }
+.sidebar-item-danger:hover { background: #FEE8E7; color: var(--red); border-left-color: var(--red); }
+.sidebar-footer { margin-top: auto; padding-top: 12px; border-top: 1px solid var(--navy-border); }
+
+/* Admin main content area */
+.admin-main {
+  flex: 1;
+  margin-left: 240px;
+  min-height: calc(100vh - 60px);
+  transition: margin-left .25s ease;
+  background: var(--navy);
+}
+.admin-main.full-width { margin-left: 0; }
+
+/* Tab panels inside admin-main */
+.admin-main .tab-panel { display: none; }
+.admin-main .tab-panel.active { display: block; }
+
+/* admin page-header: unified with .page-header above */
+
+/* ── Responsive collapse ── */
+@media (max-width: 1024px) {
+  .admin-sidebar { transform: translateX(-240px); }
+  .admin-sidebar.open { transform: translateX(0); box-shadow: 4px 0 20px rgba(0,87,184,0.15); }
+  .admin-main { margin-left: 0; }
+}
+@media (max-width: 640px) {
+  .admin-topbar { padding: 0 12px; }
+  .admin-main .container { padding: 20px 16px; }
+}
 </style>
 </head>
 <body>
@@ -1075,21 +1260,23 @@ input[type="date"] { color-scheme: dark; }
      ADMIN PAGES
 ════════════════════════════════════════════ -->
 <div class="page" id="page-admin">
-  <nav class="topnav">
-    <div class="nav-logo" onclick="adminNav('so')" title="Kembali ke halaman utama">
-      <div class="nav-logo-mark"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" style="width:34px;height:34px;flex-shrink:0;"><path fill="#006ceb" d="M27.24,51.76h36.45c3.35,0,6.07,2.72,6.07,6.07v17.21s0,11.66,0,11.66v7.58c0,3.35,2.72,6.07,6.07,6.07h18.22c3.35,0,6.07-2.72,6.07-6.07v-7.58s0-11.66,0-11.66V27.47c0-3.35,2.72-6.07,6.07-6.07h66.82c3.35,0,6.07,2.72,6.07,6.07v66.82c0,3.35-2.72,6.07-6.07,6.07h-62.1s-4.72,0-4.72,0c-3.35,0-6.07,2.72-6.07,6.07v18.22c0,3.35,2.72,6.07,6.07,6.07h36.45c3.35,0,6.07,2.72,6.07,6.07v36.45c0,3.35-2.72,6.07-6.07,6.07h-36.45c-3.35,0-6.07-2.72-6.07-6.07v-18.22s0-13.04,0-13.04v-5.18c0-3.35-2.72-6.07-6.07-6.07h-18.22c-3.35,0-6.07,2.72-6.07,6.07v5.18s0,13.04,0,13.04c0,3.35-2.72,6.07-6.07,6.07h-18.22c-3.35,0-6.07-2.72-6.07-6.07v-18.22c0-3.35,2.72-6.07,6.07-6.07h18.23c3.35,0,6.07-2.72,6.07-6.07v-18.22c0-3.35-2.72-6.07-6.07-6.07h-5.29s-31.15,0-31.15,0c-3.35,0-6.07-2.72-6.07-6.07v-36.45c0-3.35,2.72-6.07,6.07-6.07Z"/></svg></div>
-      <div class="nav-brand">
-        <div class="nav-brand-name">DMK Group</div>
-        <div class="nav-brand-sub">Admin Portal</div>
+  <!-- ADMIN TOPBAR -->
+  <nav class="admin-topbar">
+    <div class="admin-topbar-left">
+      <button class="sidebar-toggle" onclick="toggleSidebar()" title="Toggle menu">&#9776;</button>
+      <div class="nav-logo" onclick="adminNav('dashboard')" title="Dashboard" style="cursor:pointer;">
+        <div class="nav-logo-mark"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" style="width:34px;height:34px;flex-shrink:0;"><path fill="#0057B8" d="M27.24,51.76h36.45c3.35,0,6.07,2.72,6.07,6.07v17.21s0,11.66,0,11.66v7.58c0,3.35,2.72,6.07,6.07,6.07h18.22c3.35,0,6.07-2.72,6.07-6.07v-7.58s0-11.66,0-11.66V27.47c0-3.35,2.72-6.07,6.07-6.07h66.82c3.35,0,6.07,2.72,6.07,6.07v66.82c0,3.35-2.72,6.07-6.07,6.07h-62.1s-4.72,0-4.72,0c-3.35,0-6.07,2.72-6.07,6.07v18.22c0,3.35,2.72,6.07,6.07,6.07h36.45c3.35,0,6.07,2.72,6.07,6.07v36.45c0,3.35-2.72,6.07-6.07,6.07h-36.45c-3.35,0-6.07-2.72-6.07-6.07v-18.22s0-13.04,0-13.04v-5.18c0-3.35-2.72-6.07-6.07-6.07h-18.22c-3.35,0-6.07,2.72-6.07,6.07v5.18s0,13.04,0,13.04c0,3.35-2.72,6.07-6.07,6.07h-18.22c-3.35,0-6.07-2.72-6.07-6.07v-18.22c0-3.35,2.72-6.07,6.07-6.07h18.23c3.35,0,6.07-2.72,6.07-6.07v-18.22c0-3.35-2.72-6.07-6.07-6.07h-5.29s-31.15,0-31.15,0c-3.35,0-6.07-2.72-6.07-6.07v-36.45c0-3.35,2.72-6.07,6.07-6.07Z"/></svg></div>
+        <div class="nav-brand">
+          <div class="nav-brand-name">DMK Group</div>
+          <div class="nav-brand-sub" id="admin-breadcrumb">Admin Center</div>
+        </div>
       </div>
     </div>
-    <div class="nav-center">
-      <span class="nav-link active" id="anl-so" onclick="adminNav('so')">Verifikasi SO</span>
-      <span class="nav-link" id="anl-do" onclick="adminNav('do')">Buat DO</span>
-      <span class="nav-link" id="anl-tracking" onclick="adminNav('tracking')">Tracking</span>
-      <span class="nav-link" id="anl-verify" onclick="adminNav('verify')">Verifikasi TTD</span>
-    </div>
-    <div class="nav-right">
+    <div class="admin-topbar-right">
+      <div class="admin-notif" id="admin-notif-btn" onclick="adminNav('dashboard')" title="Notifikasi">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+        <span class="notif-badge" id="admin-notif-count" style="display:none;">0</span>
+      </div>
       <span class="nav-role-badge">Administrator</span>
       <span class="nav-user" id="adminNavName"></span>
       <div class="nav-avatar" id="adminNavAvatar"></div>
@@ -1097,7 +1284,78 @@ input[type="date"] { color-scheme: dark; }
     </div>
   </nav>
 
-  <div class="main-content">
+  <!-- ADMIN LAYOUT: SIDEBAR + CONTENT -->
+  <div class="admin-layout">
+
+    <!-- SIDEBAR -->
+    <aside class="admin-sidebar" id="admin-sidebar">
+      <div class="sidebar-section-label">Menu Utama</div>
+      <div class="sidebar-item active" id="anl-dashboard" onclick="adminNav('dashboard')">
+        <span class="sidebar-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg></span>
+        <span class="sidebar-label">Dashboard</span>
+      </div>
+
+      <div class="sidebar-section-label">Manajemen</div>
+      <div class="sidebar-item" id="anl-users" onclick="adminNav('users')">
+        <span class="sidebar-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>
+        <span class="sidebar-label">User Management</span>
+      </div>
+      <div class="sidebar-item" id="anl-customers" onclick="adminNav('customers')">
+        <span class="sidebar-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></span>
+        <span class="sidebar-label">Customer Management</span>
+      </div>
+
+      <div class="sidebar-section-label">Operasional</div>
+      <div class="sidebar-item" id="anl-orders" onclick="adminNav('orders')">
+        <span class="sidebar-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></span>
+        <span class="sidebar-label">Order Management</span>
+        <span class="sidebar-badge" id="badge-orders">0</span>
+      </div>
+      <div class="sidebar-item" id="anl-delivery" onclick="adminNav('delivery')">
+        <span class="sidebar-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg></span>
+        <span class="sidebar-label">Delivery Management</span>
+        <span class="sidebar-badge" id="badge-delivery">0</span>
+      </div>
+      <div class="sidebar-item" id="anl-signature" onclick="adminNav('signature')">
+        <span class="sidebar-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></span>
+        <span class="sidebar-label">Digital Signature</span>
+        <span class="sidebar-badge" id="badge-signature">0</span>
+      </div>
+
+      <div class="sidebar-section-label">Konfigurasi</div>
+      <div class="sidebar-item" id="anl-masterdata" onclick="adminNav('masterdata')">
+        <span class="sidebar-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg></span>
+        <span class="sidebar-label">Master Data</span>
+      </div>
+      <div class="sidebar-item" id="anl-integration" onclick="adminNav('integration')">
+        <span class="sidebar-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg></span>
+        <span class="sidebar-label">Integration Settings</span>
+      </div>
+      <div class="sidebar-item" id="anl-sysset" onclick="adminNav('sysset')">
+        <span class="sidebar-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2"/></svg></span>
+        <span class="sidebar-label">System Settings</span>
+      </div>
+
+      <div class="sidebar-section-label">Analitik</div>
+      <div class="sidebar-item" id="anl-reports" onclick="adminNav('reports')">
+        <span class="sidebar-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></span>
+        <span class="sidebar-label">Reports</span>
+      </div>
+      <div class="sidebar-item" id="anl-auditlogs" onclick="adminNav('auditlogs')">
+        <span class="sidebar-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg></span>
+        <span class="sidebar-label">Audit Logs</span>
+      </div>
+
+      <div class="sidebar-footer">
+        <div class="sidebar-item sidebar-item-danger" onclick="doLogout()">
+          <span class="sidebar-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg></span>
+          <span class="sidebar-label">Keluar</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- ADMIN MAIN CONTENT -->
+    <div class="admin-main" id="admin-main-content">
     <!-- A: DASHBOARD -->
     <div class="tab-panel" id="asub-dashboard">
       <div class="page-header">
@@ -1209,6 +1467,57 @@ input[type="date"] { color-scheme: dark; }
           </table></div>
         </div>
       </div>
+    </div>
+    </div><!-- /admin-main-content -->
+  </div><!-- /admin-layout -->
+</div><!-- /page-admin -->
+
+<!-- MODAL: User Management -->
+<div class="modal-bg" id="modal-user">
+  <div class="modal-box">
+    <div class="modal-header">
+      <span class="modal-title" id="modal-user-title">Tambah User Baru</span>
+      <button class="modal-close" onclick="closeModal('modal-user')">✕</button>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Nama Lengkap <span>*</span></label>
+        <input class="form-input" id="umod-name" placeholder="Nama lengkap"/>
+        <div class="form-error" id="err-umod-name">Wajib diisi</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Username <span>*</span></label>
+        <input class="form-input" id="umod-username" placeholder="Username untuk login"/>
+        <div class="form-error" id="err-umod-username">Wajib diisi</div>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Password <span>*</span></label>
+        <input class="form-input" type="password" id="umod-pass" placeholder="Min. 6 karakter"/>
+        <div class="form-error" id="err-umod-pass">Wajib diisi untuk user baru</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Role <span>*</span></label>
+        <select class="form-select" id="umod-role">
+          <option value="customer">Customer</option>
+          <option value="admin">Admin</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Nama Perusahaan</label>
+        <input class="form-input" id="umod-company" placeholder="PT. Nama Perusahaan"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Inisial Avatar (2 huruf)</label>
+        <input class="form-input" id="umod-avatar" placeholder="Cth: MB" maxlength="2" style="text-transform:uppercase;"/>
+      </div>
+    </div>
+    <div class="btn-group">
+      <button class="btn btn-primary" onclick="saveUser()">Simpan</button>
+      <button class="btn btn-ghost" onclick="closeModal('modal-user')">Batal</button>
     </div>
   </div>
 </div>
@@ -2270,22 +2579,99 @@ async function initAdmin() {
       DB.receipts = rcps.map(mapRCP);
     } catch(e) { console.error('Supabase load error:', e); }
   }
-  adminNav('so');
+  adminNav('dashboard');
+  updateAdminBadges();
+  addAuditLog('Login', `${DB.session?.name} masuk ke Admin Center`);
 }
 
 function adminNav(sub) {
-  document.querySelectorAll('[id^="asub-"]').forEach(p => p.classList.remove('active'));
-  $(`asub-${sub}`).classList.add('active');
+  // Update sidebar active state
   document.querySelectorAll('[id^="anl-"]').forEach(l => l.classList.remove('active'));
   $(`anl-${sub}`)?.classList.add('active');
 
-  const renders = {
-    so: renderAdminSO,
-    do: renderAdminDO,
-    tracking: renderAdminTracking,
-    verify: renderAdminVerify,
+  // Update breadcrumb
+  const labels = {
+    dashboard: 'Dashboard', users: 'User Management', customers: 'Customer Management',
+    orders: 'Order Management', delivery: 'Delivery Management', signature: 'Digital Signature',
+    masterdata: 'Master Data', integration: 'Integration Settings', sysset: 'System Settings',
+    reports: 'Reports', auditlogs: 'Audit Logs'
   };
-  (renders[sub] || (() => {}))();
+  const bc = $('admin-breadcrumb');
+  if (bc) bc.textContent = labels[sub] || 'Admin Center';
+
+  // Legacy panels (asub-*) — hide all first
+  document.querySelectorAll('[id^="asub-"]').forEach(p => p.classList.remove('active'));
+
+  // Map legacy routes
+  const legacyMap = { so: 'so', do: 'do', tracking: 'tracking', verify: 'verify', dashboard: 'dashboard' };
+  if (legacyMap[sub]) {
+    const panelId = 'asub-' + legacyMap[sub];
+    const panel = $(panelId);
+    if (panel) { panel.classList.add('active'); }
+    const renders = {
+      dashboard: renderAdminDash, so: renderAdminSO,
+      do: renderAdminDO, tracking: renderAdminTracking, verify: renderAdminVerify,
+    };
+    (renders[sub] || (() => {}))();
+    return;
+  }
+
+  // New pages — render into a dedicated panel
+  const newRenders = {
+    users:       renderAdminUsers,
+    customers:   renderAdminCustomers,
+    orders:      renderAdminOrders,
+    delivery:    renderAdminDelivery,
+    signature:   renderAdminSignature,
+    masterdata:  renderAdminMasterData,
+    integration: renderAdminIntegration,
+    sysset:      renderAdminSysSet,
+    reports:     renderAdminReports,
+    auditlogs:   renderAdminAuditLogs,
+  };
+  const fn = newRenders[sub];
+  if (fn) {
+    let panel = $('asub-newpage');
+    if (!panel) {
+      panel = document.createElement('div');
+      panel.id = 'asub-newpage';
+      panel.className = 'tab-panel';
+      $('admin-main-content').appendChild(panel);
+    }
+    document.querySelectorAll('[id^="asub-"]').forEach(p => p.classList.remove('active'));
+    panel.classList.add('active');
+    panel.innerHTML = fn();
+    afterRenderAdmin(sub);
+  }
+
+  updateAdminBadges();
+}
+
+function updateAdminBadges() {
+  const pendingSO  = DB.so.filter(s => s.status === 'pending').length;
+  const pendingDO  = DB.dr.filter(d => d.status === 'pending').length;
+  const pendingSig = DB.receipts.filter(r => r.verifyStatus === 'pending').length;
+  const totalPend  = pendingSO + pendingDO;
+  const bo = $('badge-orders');   if(bo){ bo.textContent = totalPend; bo.style.display = totalPend ? 'flex' : 'none'; }
+  const bd = $('badge-delivery'); if(bd){ bd.textContent = pendingDO; bd.style.display = pendingDO ? 'flex' : 'none'; }
+  const bs = $('badge-signature'); if(bs){ bs.textContent = pendingSig; bs.style.display = pendingSig ? 'flex' : 'none'; }
+  const nc = $('admin-notif-count'); if(nc){ const t=totalPend+pendingSig; nc.textContent=t; nc.style.display=t?'flex':'none'; }
+}
+
+function toggleSidebar() {
+  const sb = $('admin-sidebar');
+  const mc = $('admin-main-content');
+  if (window.innerWidth > 1024) {
+    sb.classList.toggle('collapsed');
+    mc.classList.toggle('full-width');
+  } else {
+    sb.classList.toggle('open');
+  }
+}
+
+function afterRenderAdmin(sub) {
+  // Hook untuk inisialisasi chart/interaktif setelah render
+  if (sub === 'reports') initReportsCharts();
 }
 
 // ── admin dashboard ──────────────────────────
@@ -2354,8 +2740,9 @@ function renderAdminSO() {
 }
 
 function openSOModal(soId) {
+  if (!soId) { toast('ID SO tidak valid.', 'error'); return; }
   const so = DB.so.find(s => s.id === soId);
-  if (!so) return;
+  if (!so) { toast('Data SO tidak ditemukan.', 'error'); return; }
   currentSOId = soId;
   $('modal-so-title').textContent = `Review SO: ${soId}`;
   $('modal-so-catatan').value = '';
@@ -2414,8 +2801,9 @@ function renderAdminDO() {
 }
 
 function openDOModal(drId) {
+  if (!drId) { toast('ID DR tidak valid.', 'error'); return; }
   const dr = DB.dr.find(d => d.id === drId);
-  if (!dr) return;
+  if (!dr) { toast('Data DR tidak ditemukan.', 'error'); return; }
   currentDRId = drId;
   $('do-kendaraan').value = '';
   $('do-driver').value = '';
@@ -2482,10 +2870,14 @@ function renderAdminTracking() {
 }
 
 function openTrackModal(doId) {
-  currentDOId = doId;
+  if (!doId) { toast('ID DO tidak valid.', 'error'); return; }
   const d = DB.doList.find(x => x.id === doId);
-  $('track-do-id').textContent = `${doId} — ${d?.customerName||''}`;
-  $('track-status').value = d?.trackStatus || 'loading';
+  if (!d) { toast('Data DO tidak ditemukan.', 'error'); return; }
+  currentDOId = doId;
+  const el = $('track-do-id');
+  if (el) el.textContent = doId + ' — ' + (d.customerName||'');
+  const sel = $('track-status');
+  if (sel) sel.value = d.trackStatus || 'loading';
   openModal('modal-track');
 }
 
@@ -2529,8 +2921,9 @@ function renderAdminVerify() {
 }
 
 function openVerifyModal(rcpId) {
+  if (!rcpId) { toast('ID BAPB tidak valid.', 'error'); return; }
   const r = DB.receipts.find(x => x.id === rcpId);
-  if (!r) return;
+  if (!r) { toast('Data BAPB tidak ditemukan: ' + rcpId, 'error'); return; }
   currentRCPId = rcpId;
   $('modal-verify-catatan').value = '';
 
@@ -2685,6 +3078,782 @@ async function doLoginAsync() {
   if (DB.session.role === 'customer') await initCustomer();
   else await initAdmin();
 }
+
+
+// ════════════════════════════════════════════════════════════════
+//  ADMIN CENTER — NEW PAGE RENDER FUNCTIONS
+// ════════════════════════════════════════════════════════════════
+
+// ── Audit Log helper ────────────────────────────────────────────
+function addAuditLog(action, detail) {
+  const logs = JSON.parse(localStorage.getItem('dmk_audit') || '[]');
+  logs.unshift({
+    id: 'LOG-' + Date.now(),
+    time: new Date().toLocaleString('id-ID'),
+    user: DB.session?.name || 'System',
+    role: DB.session?.role || '-',
+    action, detail,
+    ip: '192.168.1.' + Math.floor(Math.random()*254+1)
+  });
+  if (logs.length > 500) logs.length = 500;
+  localStorage.setItem('dmk_audit', JSON.stringify(logs));
+}
+
+// ── Dashboard Admin ─────────────────────────────────────────────
+function renderAdminDash() {
+  const allPOs = DB.po; const allSOs = DB.so; const allDOs = DB.doList; const allRCP = DB.receipts;
+  const pendSO = allSOs.filter(s=>s.status==='pending').length;
+  const pendDO = DB.dr.filter(d=>d.status==='pending').length;
+  const pendSig = allRCP.filter(r=>r.verifyStatus==='pending').length;
+  const totalRev = allDOs.filter(d=>d.status==='closed').reduce((a,d)=>a+Number(d.tonase||0)*12500000,0);
+  $('a-stats').innerHTML = [
+    ['stat-card', `<div class="stat-num">${allPOs.length}</div><div class="stat-lbl">Total PO Masuk</div>`],
+    ['stat-card', `<div class="stat-num">${pendSO}</div><div class="stat-lbl">SO Pending</div>`],
+    ['stat-card', `<div class="stat-num">${allDOs.filter(d=>!['closed'].includes(d.status)).length}</div><div class="stat-lbl">DO Aktif</div>`],
+    ['stat-card', `<div class="stat-num">${pendSig}</div><div class="stat-lbl">TTD Pending</div>`],
+  ].map(([c,h])=>`<div class="${c}">${h}</div>`).join('');
+  const pendingSOs = allSOs.filter(s=>s.status==='pending');
+  $('a-dash-so').innerHTML = pendingSOs.length ? pendingSOs.map(s=>`
+    <div class="flex-between" style="padding:10px 0;border-bottom:1px solid var(--navy-border);">
+      <div><span class="col-blue fw-500">${s.id}</span>
+      <span class="col-muted" style="font-size:11px;margin-left:8px;">${s.customerName}</span>
+      <div style="font-size:11px;color:var(--muted);">${s.product} · ${DB.fmtNum(s.tonaseTotal)} Ton</div></div>
+      <button class="btn btn-primary btn-sm" onclick="openSOModal('${s.id}')">Review</button>
+    </div>`).join('') : emptyState('Tidak ada SO pending.');
+  const pendingRCP = allRCP.filter(r=>r.verifyStatus==='pending');
+  $('a-dash-verify').innerHTML = pendingRCP.length ? pendingRCP.map(r=>`
+    <div class="flex-between" style="padding:10px 0;border-bottom:1px solid var(--navy-border);">
+      <div><span class="col-blue fw-500">${r.id}</span>
+      <span class="col-muted" style="font-size:11px;margin-left:8px;">${r.customerName}</span>
+      <div style="font-size:11px;color:var(--muted);">${r.doId} · ${DB.fmtNum(r.timbangan)} Ton</div></div>
+      <button class="btn btn-primary btn-sm" onclick="openVerifyModal('${r.id}')">Verifikasi</button>
+    </div>`).join('') : emptyState('Tidak ada BAPB pending.');
+}
+
+// ── 1. User Management ─────────────────────────────────────────
+function renderAdminUsers() {
+  const users = DB.users;
+  return `<div class="page-header"><div class="page-eyebrow">Admin Center</div>
+    <h1 class="page-title">User Management</h1>
+    <p class="page-sub">Kelola akun pengguna sistem portal DMK Group.</p></div>
+  <div class="container">
+    <div class="flex-between mb-24">
+      <div class="flex-between" style="gap:8px;">
+        <input class="form-input" id="user-search" placeholder="Cari nama / username..." style="width:260px;" oninput="filterUsers()"/>
+        <select class="form-select" id="user-role-filter" onchange="filterUsers()" style="width:160px;">
+          <option value="">Semua Role</option><option value="admin">Admin</option><option value="customer">Customer</option>
+        </select>
+      </div>
+      <button class="btn btn-primary" onclick="openUserModal()">+ Tambah User</button>
+    </div>
+    <div class="tbl-wrap"><table class="tbl" id="users-table">
+      <thead><tr><th>ID</th><th>Nama</th><th>Username</th><th>Role</th><th>Perusahaan</th><th>Status</th><th>Aksi</th></tr></thead>
+      <tbody id="users-tbody">${renderUserRows(users)}</tbody>
+    </table></div>
+  </div>\`;
+}
+
+function renderUserRows(users) {
+  if (!users?.length) return '<tr><td colspan="7">' + emptyState('Belum ada pengguna.') + '</td></tr>';
+  return users.map(function(u) {
+    const roleBadge = u.role === 'admin'
+      ? '<span class="badge badge-released">admin</span>'
+      : '<span class="badge badge-info">customer</span>';
+    return '<tr>' +
+      '<td class="col-blue fw-500">' + u.id + '</td>' +
+      '<td><div class="fw-500">' + u.name + '</div><div style="font-size:11px;color:var(--muted)">' + u.username + '</div></td>' +
+      '<td>' + u.username + '</td>' +
+      '<td>' + roleBadge + '</td>' +
+      '<td>' + (u.company || '—') + '</td>' +
+      '<td><span class="badge badge-approved">Aktif</span></td>' +
+      '<td><div class="tbl-actions">' +
+        '<button class="btn btn-ghost btn-sm" onclick="editUser('' + u.id + '')">Edit</button> ' +
+        '<button class="btn btn-danger btn-sm" onclick="deleteUser('' + u.id + '')">Hapus</button>' +
+      '</div></td>' +
+    '</tr>';
+  }).join('');
+}
+
+function filterUsers() {
+  const q = $('user-search')?.value.toLowerCase()||'';
+  const r = $('user-role-filter')?.value||'';
+  const filtered = DB.users.filter(u =>
+    (!q || u.name.toLowerCase().includes(q) || u.username.toLowerCase().includes(q)) &&
+    (!r || u.role === r)
+  );
+  const tb = $('users-tbody');
+  if (tb) tb.innerHTML = renderUserRows(filtered);
+}
+
+let editingUserId = null;
+function openUserModal(id) {
+  editingUserId = id || null;
+  const u = id ? DB.users.find(x => x.id === id) : null;
+
+  const set = (elId, val) => { const e = $(elId); if(e) e.value = val || ''; };
+  const clearErr = id => { const e=$(id); if(e) e.style.display='none'; };
+
+  $('modal-user-title').textContent = id ? 'Edit User — ' + (u?.name||'') : 'Tambah User Baru';
+  set('umod-name',     u?.name);
+  set('umod-username', u?.username);
+  set('umod-pass',     '');
+  set('umod-company',  u?.company);
+  set('umod-avatar',   u?.avatar);
+  if ($('umod-role')) $('umod-role').value = u?.role || 'customer';
+
+  // Clear all error messages
+  ['err-umod-name','err-umod-username','err-umod-pass'].forEach(clearErr);
+
+  // Show/hide password hint
+  const passLbl = $('umod-pass')?.closest('.form-group')?.querySelector('.form-label');
+  if (passLbl) passLbl.innerHTML = id
+    ? 'Password <small style="color:var(--muted);font-weight:400;">(kosongkan jika tidak diubah)</small>'
+    : 'Password <span>*</span>';
+
+  openModal('modal-user');
+}
+function editUser(id) { openUserModal(id); }
+function saveUser() {
+  const name     = ($('umod-name')?.value     || '').trim();
+  const username = ($('umod-username')?.value || '').trim();
+  const pass     =  $('umod-pass')?.value     || '';
+  const role     =  $('umod-role')?.value     || 'customer';
+  const company  = ($('umod-company')?.value  || '').trim();
+  const avatarRaw= ($('umod-avatar')?.value   || '').trim();
+
+  // Validasi
+  let ok = true;
+  const setErr = (id, show) => { const e=$(id); if(e) e.style.display = show?'block':'none'; if(show) ok=false; };
+  setErr('err-umod-name',     !name);
+  setErr('err-umod-username', !username);
+  setErr('err-umod-pass',     !editingUserId && !pass);
+  if (!ok) { toast('Lengkapi field yang wajib diisi.', 'error'); return; }
+
+  // Cek duplikat username
+  const dupUser = DB.users.find(x => x.username === username && x.id !== editingUserId);
+  if (dupUser) { toast('Username sudah digunakan, pilih yang lain.', 'error'); return; }
+
+  const avatar = avatarRaw ? avatarRaw.toUpperCase() : name.slice(0,2).toUpperCase();
+
+  if (editingUserId) {
+    const u = DB.users.find(x => x.id === editingUserId);
+    if (u) {
+      u.name = name; u.username = username; u.role = role;
+      u.company = company; u.avatar = avatar;
+      if (pass) u.password = pass;
+    }
+    addAuditLog('Edit User', 'User ' + username + ' diperbarui oleh ' + DB.session?.name);
+  } else {
+    const newId = 'U' + String(Date.now()).slice(-6);
+    DB.users.push({ id: newId, username, password: pass, role, name, company, avatar });
+    addAuditLog('Tambah User', 'User baru: ' + username + ' (' + role + ')');
+  }
+
+  lsSave();
+  closeModal('modal-user');
+  toast('Data user berhasil disimpan.', 'success');
+  const tb = $('users-tbody');
+  if (tb) tb.innerHTML = renderUserRows(DB.users);
+}
+function deleteUser(id) {
+  if (!id) return;
+  const u = DB.users.find(x => x.id === id);
+  if (!u) { toast('User tidak ditemukan.', 'error'); return; }
+  if (u.id === DB.session?.id) { toast('Tidak bisa menghapus akun yang sedang login.', 'error'); return; }
+  if (!confirm('Hapus user "' + u.name + '"? Tindakan ini tidak dapat dibatalkan.')) return;
+  DB.users = DB.users.filter(x => x.id !== id);
+  lsSave();
+  addAuditLog('Hapus User', 'User ' + u.username + ' dihapus oleh ' + DB.session?.name);
+  toast('User ' + u.name + ' berhasil dihapus.', 'success');
+  const tb = $('users-tbody');
+  if (tb) tb.innerHTML = renderUserRows(DB.users);
+}
+
+// ── 2. Customer Management ─────────────────────────────────────
+function renderAdminCustomers() {
+  const customers = DB.users.filter(u=>u.role==='customer');
+  return `<div class="page-header"><div class="page-eyebrow">Admin Center</div>
+    <h1 class="page-title">Customer Management</h1>
+    <p class="page-sub">Profil, histori order, dan data perusahaan seluruh customer.</p></div>
+  <div class="container">
+    <div class="grid-3 mb-24">
+      <div class="stat-card"><div class="stat-num">${customers.length}</div><div class="stat-lbl">Total Customer</div></div>
+      <div class="stat-card"><div class="stat-num">${customers.filter(c=>DB.po.some(p=>p.customerId===c.id&&p.status==='pending')).length}</div><div class="stat-lbl">Ada PO Pending</div></div>
+      <div class="stat-card"><div class="stat-num">${DB.po.length}</div><div class="stat-lbl">Total PO Masuk</div></div>
+    </div>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>ID</th><th>Perusahaan</th><th>PIC / Username</th><th>Total PO</th><th>SO Released</th><th>DO Aktif</th><th>Bergabung</th><th>Aksi</th></tr></thead>
+      <tbody>${customers.map(c => {
+        const cPOs = DB.po.filter(p=>p.customerId===c.id);
+        const cSOs = DB.so.filter(s=>s.customerId===c.id&&s.status==='released');
+        const cDOs = DB.doList.filter(d=>d.customerId===c.id&&!['closed'].includes(d.status));
+        return `<tr>
+          <td class="col-blue fw-500">${c.id}</td>
+          <td><div class="fw-500">${c.company||c.name}</div><div style="font-size:11px;color:var(--muted)">${c.name}</div></td>
+          <td>${c.username}</td>
+          <td>${cPOs.length}</td><td>${cSOs.length}</td><td>${cDOs.length}</td>
+          <td>${c.createdAt||'2024-01-01'}</td>
+          <td><button class="btn btn-outline btn-sm" onclick="viewCustomerDetail('${c.id}')">Detail</button></td>
+        </tr>`;}).join('')||`<tr><td colspan="8">${emptyState('Belum ada customer.')}</td></tr>`}
+      </tbody>
+    </table></div>
+  </div>`;
+}
+
+function viewCustomerDetail(id) {
+  const c = DB.users.find(u=>u.id===id); if(!c) return;
+  const cPOs = DB.po.filter(p=>p.customerId===id);
+  const cSOs = DB.so.filter(s=>s.customerId===id);
+  const cDOs = DB.doList.filter(d=>d.customerId===id);
+  alert(`Detail Customer: ${c.name}\nTotal PO: ${cPOs.length}\nTotal SO: ${cSOs.length}\nTotal DO: ${cDOs.length}`);
+}
+
+// ── 3. Order Management ────────────────────────────────────────
+function renderAdminOrders() {
+  return `<div class="page-header"><div class="page-eyebrow">Admin Center</div>
+    <h1 class="page-title">Order Management</h1>
+    <p class="page-sub">Kelola seluruh Purchase Order dan Sales Order dari semua customer.</p></div>
+  <div class="container">
+    <div class="grid-4 mb-24">
+      <div class="stat-card"><div class="stat-num">${DB.po.length}</div><div class="stat-lbl">Total PO</div></div>
+      <div class="stat-card"><div class="stat-num">${DB.so.filter(s=>s.status==='pending').length}</div><div class="stat-lbl">SO Menunggu</div></div>
+      <div class="stat-card"><div class="stat-num">${DB.so.filter(s=>s.status==='released').length}</div><div class="stat-lbl">SO Released</div></div>
+      <div class="stat-card"><div class="stat-num">${DB.so.filter(s=>s.status==='rejected').length}</div><div class="stat-lbl">SO Ditolak</div></div>
+    </div>
+    <div class="tabs">
+      <button class="tab-btn active" onclick="tabSwitch('om','po',this)">Purchase Orders</button>
+      <button class="tab-btn" onclick="tabSwitch('om','so',this)">Sales Orders</button>
+    </div>
+    <div class="tab-panel active" id="om-po">
+      <div class="tbl-wrap"><table class="tbl">
+        <thead><tr><th>No. PO</th><th>Customer</th><th>Produk</th><th>Tonase</th><th>Harga/Ton</th><th>Lokasi</th><th>Tgl PO</th><th>Status</th><th>Aksi</th></tr></thead>
+        <tbody>${DB.po.slice().reverse().map(p=>`<tr>
+          <td class="col-blue fw-500">${p.id}</td><td>${p.customerName}</td><td>${p.product}</td>
+          <td>${DB.fmtNum(p.tonase)} T</td><td>Rp ${DB.fmtNum(p.harga)}</td>
+          <td style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${p.lokasi}</td>
+          <td>${DB.fmt(p.tanggalPO)}</td><td>${badge(p.status)}</td>
+          <td>${p.status==='pending'?`<button class="btn btn-primary btn-sm" onclick="adminNav('so')">Proses SO</button>`:'—'}</td>
+        </tr>`).join('')||`<tr><td colspan="9">${emptyState('Belum ada PO.')}</td></tr>`}
+        </tbody>
+      </table></div>
+    </div>
+    <div class="tab-panel" id="om-so">
+      <div class="tbl-wrap"><table class="tbl">
+        <thead><tr><th>No. SO</th><th>Ref. PO</th><th>Customer</th><th>Produk</th><th>Total Ton</th><th>Sisa Ton</th><th>Status</th><th>Catatan</th></tr></thead>
+        <tbody>${DB.so.slice().reverse().map(s=>`<tr>
+          <td class="col-blue fw-500">${s.id}</td><td>${s.poId}</td><td>${s.customerName}</td>
+          <td>${s.product}</td><td>${DB.fmtNum(s.tonaseTotal)} T</td>
+          <td>${DB.fmtNum(s.tonaseSisa||s.tonaseTotal)} T</td>
+          <td>${badge(s.status)}</td><td style="max-width:160px;font-size:11px;">${s.catatan||'—'}</td>
+        </tr>`).join('')||`<tr><td colspan="8">${emptyState('Belum ada SO.')}</td></tr>`}
+        </tbody>
+      </table></div>
+    </div>
+  </div>`;
+}
+
+// ── 4. Delivery Management ─────────────────────────────────────
+function renderAdminDelivery() {
+  const pendDR = DB.dr.filter(d=>d.status==='pending');
+  return `<div class="page-header"><div class="page-eyebrow">Admin Center</div>
+    <h1 class="page-title">Delivery Management</h1>
+    <p class="page-sub">Kelola semua Delivery Request, Delivery Order, dan status pengiriman.</p></div>
+  <div class="container">
+    <div class="grid-4 mb-24">
+      <div class="stat-card"><div class="stat-num">${DB.dr.length}</div><div class="stat-lbl">Total DR</div></div>
+      <div class="stat-card"><div class="stat-num">${pendDR.length}</div><div class="stat-lbl">DR Pending DO</div></div>
+      <div class="stat-card"><div class="stat-num">${DB.doList.filter(d=>!['closed'].includes(d.status)).length}</div><div class="stat-lbl">DO Aktif</div></div>
+      <div class="stat-card"><div class="stat-num">${DB.doList.filter(d=>d.status==='closed').length}</div><div class="stat-lbl">DO Closed</div></div>
+    </div>
+    <div class="tabs">
+      <button class="tab-btn active" onclick="tabSwitch('dm','dr',this)">Delivery Requests</button>
+      <button class="tab-btn" onclick="tabSwitch('dm','do',this)">Delivery Orders</button>
+    </div>
+    <div class="tab-panel active" id="dm-dr">
+      <div class="tbl-wrap"><table class="tbl">
+        <thead><tr><th>No. DR</th><th>Customer</th><th>Ref. SO</th><th>Produk</th><th>Tonase</th><th>Tgl Kirim</th><th>Tujuan</th><th>Status</th><th>Aksi</th></tr></thead>
+        <tbody>${DB.dr.slice().reverse().map(d=>`<tr>
+          <td class="col-blue fw-500">${d.id}</td><td>${d.customerName}</td><td>${d.soId}</td>
+          <td>${d.product||'—'}</td><td>${DB.fmtNum(d.tonase)} T</td>
+          <td>${DB.fmt(d.tanggalKirim)}</td>
+          <td style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${d.tujuan}</td>
+          <td>${badge(d.status)}</td>
+          <td>${d.status==='pending'?`<button class="btn btn-primary btn-sm" onclick="openDOModal('${d.id}')">Buat DO</button>`:'—'}</td>
+        </tr>`).join('')||`<tr><td colspan="9">${emptyState('Belum ada DR.')}</td></tr>`}
+        </tbody>
+      </table></div>
+    </div>
+    <div class="tab-panel" id="dm-do">
+      <div class="tbl-wrap"><table class="tbl">
+        <thead><tr><th>No. DO</th><th>Customer</th><th>Kendaraan</th><th>Driver</th><th>Tonase</th><th>Terminal</th><th>Track Status</th><th>DO Status</th><th>Aksi</th></tr></thead>
+        <tbody>${DB.doList.slice().reverse().map(d=>`<tr>
+          <td class="col-blue fw-500">${d.id}</td><td>${d.customerName}</td>
+          <td>${d.noKendaraan}</td><td>${d.driver}</td>
+          <td>${DB.fmtNum(d.tonase)} T</td><td>${d.terminal}</td>
+          <td><span class="badge badge-info">${TRACK_MAP[d.trackStatus]||d.trackStatus}</span></td>
+          <td>${badge(d.status)}</td>
+          <td>${d.status!=='closed'?`<button class="btn btn-ghost btn-sm" onclick="openTrackModal('${d.id}')">Update</button>`:'—'}</td>
+        </tr>`).join('')||`<tr><td colspan="9">${emptyState('Belum ada DO.')}</td></tr>`}
+        </tbody>
+      </table></div>
+    </div>
+  </div>`;
+}
+
+// ── 5. Digital Signature ───────────────────────────────────────
+function renderAdminSignature() {
+  const pending = DB.receipts.filter(r=>r.verifyStatus==='pending');
+  const verified = DB.receipts.filter(r=>r.verifyStatus==='verified');
+  const rejected = DB.receipts.filter(r=>r.verifyStatus==='rejected');
+  return `<div class="page-header"><div class="page-eyebrow">Phase 2</div>
+    <h1 class="page-title">Digital Signature</h1>
+    <p class="page-sub">Verifikasi Berita Acara Penerimaan Barang (BAPB) beserta tanda tangan digital customer.</p></div>
+  <div class="container">
+    <div class="grid-3 mb-24">
+      <div class="stat-card"><div class="stat-num">${pending.length}</div><div class="stat-lbl">Menunggu Verifikasi</div></div>
+      <div class="stat-card"><div class="stat-num">${verified.length}</div><div class="stat-lbl">Terverifikasi</div></div>
+      <div class="stat-card"><div class="stat-num">${rejected.length}</div><div class="stat-lbl">Ditolak</div></div>
+    </div>
+    <div class="tabs">
+      <button class="tab-btn active" onclick="tabSwitch('sig','pending',this)">Menunggu (${pending.length})</button>
+      <button class="tab-btn" onclick="tabSwitch('sig','verified',this)">Terverifikasi</button>
+      <button class="tab-btn" onclick="tabSwitch('sig','all',this)">Semua</button>
+    </div>
+    <div class="tab-panel active" id="sig-pending">
+      ${pending.length ? `<div class="alert alert-warn"><span class="alert-icon">⚠</span>${pending.length} BAPB menunggu verifikasi tanda tangan digital.</div>
+      <div class="tbl-wrap"><table class="tbl">
+        <thead><tr><th>No. BAPB</th><th>Ref. DO</th><th>Customer</th><th>Penerima</th><th>Tgl Terima</th><th>Tonase DO</th><th>Timbangan Aktual</th><th>Selisih</th><th>TTD</th><th>Aksi</th></tr></thead>
+        <tbody>${pending.map(function(r){
+          const d=DB.doList.find(x=>x.id===r.doId);
+          const sel=(Number(r.timbangan)-Number(d?.tonase||0)).toFixed(2);
+          const selCls=Math.abs(parseFloat(sel))>0.5?'col-red':'col-blue';
+          const sigImg=r.sigDataUrl?'<img src="'+r.sigDataUrl+'" style="height:32px;border:1px solid var(--navy-border);border-radius:4px;" alt="TTD"/>':'—';
+          return '<tr>'+
+            '<td class="col-blue fw-500">'+r.id+'</td><td>'+r.doId+'</td><td>'+r.customerName+'</td>'+
+            '<td>'+r.namaPenerima+'</td><td>'+DB.fmt(r.tanggal)+'</td>'+
+            '<td>'+DB.fmtNum(d?.tonase||0)+' T</td><td>'+DB.fmtNum(r.timbangan)+' T</td>'+
+            '<td class="'+selCls+'">'+sel+' T</td>'+
+            '<td>'+sigImg+'</td>'+
+            '<td><button class="btn btn-primary btn-sm" onclick="openVerifyModal(\''+r.id+'\')">Verifikasi</button></td>'+
+          '</tr>';}).join('')}
+        </tbody>
+      </table></div>` : `<div class="card">${emptyState('Semua BAPB sudah terverifikasi. ✓')}</div>`}
+    </div>
+    <div class="tab-panel" id="sig-verified">
+      <div class="tbl-wrap"><table class="tbl">
+        <thead><tr><th>No. BAPB</th><th>Ref. DO</th><th>Customer</th><th>Penerima</th><th>Tonase Aktual</th><th>Tgl Verifikasi</th><th>Diverifikasi Oleh</th><th>No. Invoice</th></tr></thead>
+        <tbody>${verified.slice().reverse().map(r=>`<tr>
+          <td class="col-blue fw-500">${r.id}</td><td>${r.doId}</td><td>${r.customerName}</td>
+          <td>${r.namaPenerima}</td><td>${DB.fmtNum(r.timbangan)} T</td>
+          <td>${DB.fmt(r.verifiedAt)}</td><td>${r.verifiedBy||'—'}</td><td class="col-blue">${r.invId||'—'}</td>
+        </tr>`).join('')||`<tr><td colspan="8">${emptyState('Belum ada verifikasi.')}</td></tr>`}
+        </tbody>
+      </table></div>
+    </div>
+    <div class="tab-panel" id="sig-all">
+      <div class="tbl-wrap"><table class="tbl">
+        <thead><tr><th>No. BAPB</th><th>Ref. DO</th><th>Customer</th><th>Tonase</th><th>Tgl Terima</th><th>Status</th></tr></thead>
+        <tbody>${DB.receipts.slice().reverse().map(r=>`<tr>
+          <td class="col-blue fw-500">${r.id}</td><td>${r.doId}</td><td>${r.customerName}</td>
+          <td>${DB.fmtNum(r.timbangan)} T</td><td>${DB.fmt(r.tanggal)}</td><td>${badge(r.verifyStatus)}</td>
+        </tr>`).join('')||`<tr><td colspan="6">${emptyState('Belum ada data.')}</td></tr>`}
+        </tbody>
+      </table></div>
+    </div>
+  </div>`;
+}
+
+// ── 6. Master Data ─────────────────────────────────────────────
+const MASTER_DATA = {
+  products: [
+    {id:'P001',name:'Aspal Curah Pertamina 60/70',satuan:'Ton',harga:12500000,stok:1200,terminal:'Surabaya'},
+    {id:'P002',name:'Aspal Curah Pertamina 80/100',satuan:'Ton',harga:11800000,stok:800,terminal:'Semarang'},
+    {id:'P003',name:'Polymer Modified Asphalt (PMA)',satuan:'Ton',harga:18500000,stok:350,terminal:'Surabaya'},
+    {id:'P004',name:'Aspal Drum 60/70',satuan:'Ton',harga:14000000,stok:200,terminal:'Bali'},
+  ],
+  terminals: [
+    {id:'T001',name:'Bulk Terminal Surabaya',lokasi:'Surabaya, Jawa Timur',kapasitas:'5.000 Ton',status:'Aktif'},
+    {id:'T002',name:'Bulk Terminal Semarang',lokasi:'Semarang, Jawa Tengah',kapasitas:'3.000 Ton',status:'Aktif'},
+    {id:'T003',name:'Bulk Terminal Bali',lokasi:'Denpasar, Bali',kapasitas:'2.000 Ton',status:'Aktif'},
+    {id:'T004',name:'Bulk Terminal Sumbawa',lokasi:'Sumbawa, NTB',kapasitas:'1.500 Ton',status:'Aktif'},
+    {id:'T005',name:'Bulk Terminal Halmahera',lokasi:'Ternate, Maluku Utara',kapasitas:'1.000 Ton',status:'Aktif'},
+  ],
+  vehicles: [
+    {id:'V001',nopol:'B 1234 XY',jenis:'Tangki 200T',driver:'Budi Santoso',tlp:'0813-1234-5678',status:'Tersedia'},
+    {id:'V002',nopol:'L 5678 AB',jenis:'Tangki 150T',driver:'Hendra Wijaya',tlp:'0856-7890-1234',status:'Dikirim'},
+    {id:'V003',nopol:'H 9988 CD',jenis:'Tangki 200T',driver:'Agus Prasetyo',tlp:'0822-4444-5555',status:'Tersedia'},
+    {id:'V004',nopol:'H 3344 EF',jenis:'Tangki 150T',driver:'Slamet Riyadi',tlp:'0811-2233-4455',status:'Tersedia'},
+  ]
+};
+
+function renderAdminMasterData() {
+  const savedMD = JSON.parse(localStorage.getItem('dmk_masterdata') || 'null') || MASTER_DATA;
+  return `<div class="page-header"><div class="page-eyebrow">Admin Center</div>
+    <h1 class="page-title">Master Data</h1>
+    <p class="page-sub">Kelola data referensi sistem: produk, terminal, kendaraan, dan data lainnya.</p></div>
+  <div class="container">
+    <div class="tabs">
+      <button class="tab-btn active" onclick="tabSwitch('md','products',this)">Produk</button>
+      <button class="tab-btn" onclick="tabSwitch('md','terminals',this)">Terminal</button>
+      <button class="tab-btn" onclick="tabSwitch('md','vehicles',this)">Armada</button>
+    </div>
+    <div class="tab-panel active" id="md-products">
+      <div class="flex-between mb-16">
+        <div style="font-size:13px;color:var(--mid);">${savedMD.products.length} produk terdaftar</div>
+        <button class="btn btn-primary btn-sm" onclick="addMasterItem('product')">+ Tambah Produk</button>
+      </div>
+      <div class="tbl-wrap"><table class="tbl">
+        <thead><tr><th>ID</th><th>Nama Produk</th><th>Satuan</th><th>Harga/Ton (Rp)</th><th>Stok (Ton)</th><th>Terminal</th><th>Aksi</th></tr></thead>
+        <tbody>${savedMD.products.map(p=>`<tr>
+          <td class="col-blue fw-500">${p.id}</td><td class="fw-500">${p.name}</td><td>${p.satuan}</td>
+          <td>Rp ${DB.fmtNum(p.harga)}</td><td>${DB.fmtNum(p.stok)}</td><td>${p.terminal}</td>
+          <td><button class="btn btn-ghost btn-sm">Edit</button></td>
+        </tr>`).join('')}
+        </tbody>
+      </table></div>
+    </div>
+    <div class="tab-panel" id="md-terminals">
+      <div class="tbl-wrap"><table class="tbl">
+        <thead><tr><th>ID</th><th>Nama Terminal</th><th>Lokasi</th><th>Kapasitas</th><th>Status</th></tr></thead>
+        <tbody>${savedMD.terminals.map(t=>`<tr>
+          <td class="col-blue fw-500">${t.id}</td><td class="fw-500">${t.name}</td>
+          <td>${t.lokasi}</td><td>${t.kapasitas}</td>
+          <td><span class="badge badge-approved">${t.status}</span></td>
+        </tr>`).join('')}
+        </tbody>
+      </table></div>
+    </div>
+    <div class="tab-panel" id="md-vehicles">
+      <div class="flex-between mb-16">
+        <div style="font-size:13px;color:var(--mid);">${savedMD.vehicles.length} armada terdaftar</div>
+        <button class="btn btn-primary btn-sm" onclick="addMasterItem('vehicle')">+ Daftarkan Armada</button>
+      </div>
+      <div class="tbl-wrap"><table class="tbl">
+        <thead><tr><th>ID</th><th>No. Pol</th><th>Jenis</th><th>Driver</th><th>Telepon</th><th>Status</th><th>Aksi</th></tr></thead>
+        <tbody>${savedMD.vehicles.map(v=>`<tr>
+          <td class="col-blue fw-500">${v.id}</td><td class="fw-500">${v.nopol}</td>
+          <td>${v.jenis}</td><td>${v.driver}</td><td>${v.tlp}</td>
+          <td><span class="badge ${v.status==='Tersedia'?'badge-approved':'badge-transit'}">${v.status}</span></td>
+          <td><button class="btn btn-ghost btn-sm">Edit</button></td>
+        </tr>`).join('')}
+        </tbody>
+      </table></div>
+    </div>
+  </div>`;
+}
+function addMasterItem(type) { toast('Fitur tambah '+type+' tersedia — hubungkan ke Supabase untuk persistensi penuh.','info'); }
+
+// ── 7. Integration Settings ────────────────────────────────────
+function renderAdminIntegration() {
+  const cfg = JSON.parse(localStorage.getItem('dmk_integration') || '{}');
+  return `<div class="page-header"><div class="page-eyebrow">Admin Center</div>
+    <h1 class="page-title">Integration Settings</h1>
+    <p class="page-sub">Konfigurasi integrasi Microsoft Dynamics 365, CarTrack, dan Mceasy.</p></div>
+  <div class="container" style="max-width:720px;">
+    <div class="card mb-24">
+      <div class="card-title">Microsoft Dynamics 365</div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Tenant ID</label>
+          <input class="form-input" id="int-d365-tenant" value="${cfg.d365Tenant||''}" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"/></div>
+        <div class="form-group"><label class="form-label">Client ID</label>
+          <input class="form-input" id="int-d365-client" value="${cfg.d365Client||''}" placeholder="App registration client ID"/></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Environment URL</label>
+          <input class="form-input" id="int-d365-url" value="${cfg.d365Url||''}" placeholder="https://yourorg.crm.dynamics.com"/></div>
+        <div class="form-group"><label class="form-label">Status Koneksi</label>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:8px;">
+            <span class="badge ${cfg.d365Status==='connected'?'badge-approved':'badge-pending'}">${cfg.d365Status==='connected'?'Terhubung':'Belum Dikonfigurasi'}</span>
+            <button class="btn btn-outline btn-sm" onclick="testIntegration('d365')">Test Koneksi</button>
+          </div></div>
+      </div>
+    </div>
+    <div class="card mb-24">
+      <div class="card-title">CarTrack GPS Tracking</div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">API Key</label>
+          <input class="form-input" id="int-cartrack-key" value="${cfg.cartrackKey||''}" type="password" placeholder="CarTrack API Key"/></div>
+        <div class="form-group"><label class="form-label">Account ID</label>
+          <input class="form-input" id="int-cartrack-acc" value="${cfg.cartrackAcc||''}" placeholder="Account ID"/></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span class="badge ${cfg.cartrackStatus==='connected'?'badge-approved':'badge-pending'}">${cfg.cartrackStatus==='connected'?'Terhubung':'Belum Dikonfigurasi'}</span>
+        <button class="btn btn-outline btn-sm" onclick="testIntegration('cartrack')">Test Koneksi</button>
+      </div>
+    </div>
+    <div class="card mb-24">
+      <div class="card-title">Mceasy Fleet Management</div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">API Key</label>
+          <input class="form-input" id="int-mceasy-key" value="${cfg.mceasyKey||''}" type="password" placeholder="Mceasy API Key"/></div>
+        <div class="form-group"><label class="form-label">Base URL</label>
+          <input class="form-input" id="int-mceasy-url" value="${cfg.mceasyUrl||''}" placeholder="https://api.mceasy.com"/></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span class="badge ${cfg.mceasyStatus==='connected'?'badge-approved':'badge-pending'}">${cfg.mceasyStatus==='connected'?'Terhubung':'Belum Dikonfigurasi'}</span>
+        <button class="btn btn-outline btn-sm" onclick="testIntegration('mceasy')">Test Koneksi</button>
+      </div>
+    </div>
+    <div class="card mb-24">
+      <div class="card-title">Supabase Database</div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Project URL</label>
+          <input class="form-input" id="int-sb-url" value="${SUPABASE_URL}" placeholder="https://xxx.supabase.co"/></div>
+        <div class="form-group"><label class="form-label">Anon Key</label>
+          <input class="form-input" id="int-sb-key" value="${SUPABASE_ANON_KEY}" type="password" placeholder="eyJhbGci..."/></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span class="badge ${_sb?'badge-approved':'badge-pending'}">${_sb?'Terhubung':'Mode Offline (demo)'}</span>
+      </div>
+    </div>
+    <div class="btn-group">
+      <button class="btn btn-primary" onclick="saveIntegration()">Simpan Konfigurasi</button>
+      <button class="btn btn-ghost" onclick="adminNav('integration')">Reset</button>
+    </div>
+  </div>`;
+}
+function testIntegration(name) { toast('Menguji koneksi '+name.toUpperCase()+'... (Demo: koneksi OK)', 'info'); }
+function saveIntegration() {
+  const cfg = {
+    d365Tenant: $('int-d365-tenant')?.value, d365Client: $('int-d365-client')?.value,
+    d365Url: $('int-d365-url')?.value, d365Status: 'pending',
+    cartrackKey: $('int-cartrack-key')?.value, cartrackAcc: $('int-cartrack-acc')?.value, cartrackStatus: 'pending',
+    mceasyKey: $('int-mceasy-key')?.value, mceasyUrl: $('int-mceasy-url')?.value, mceasyStatus: 'pending',
+  };
+  localStorage.setItem('dmk_integration', JSON.stringify(cfg));
+  addAuditLog('Integration', 'Konfigurasi integrasi diperbarui');
+  toast('Konfigurasi integrasi berhasil disimpan.', 'success');
+}
+
+// ── 8. System Settings ────────────────────────────────────────
+function renderAdminSysSet() {
+  const cfg = JSON.parse(localStorage.getItem('dmk_sysconfig') || '{}');
+  return `<div class="page-header"><div class="page-eyebrow">Admin Center</div>
+    <h1 class="page-title">System Settings</h1>
+    <p class="page-sub">Konfigurasi parameter sistem, notifikasi, dan kebijakan portal.</p></div>
+  <div class="container" style="max-width:720px;">
+    <div class="card mb-24">
+      <div class="card-title">Pengaturan Umum Portal</div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Nama Portal</label>
+          <input class="form-input" id="sys-portal-name" value="${cfg.portalName||'DMK Customer Portal'}"/></div>
+        <div class="form-group"><label class="form-label">Versi Sistem</label>
+          <input class="form-input" value="v2.0.0" readonly style="opacity:.6;"/></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Timezone</label>
+          <select class="form-select" id="sys-tz">
+            <option value="WIB" ${(cfg.tz||'WIB')==='WIB'?'selected':''}>WIB (UTC+7)</option>
+            <option value="WITA" ${cfg.tz==='WITA'?'selected':''}>WITA (UTC+8)</option>
+            <option value="WIT" ${cfg.tz==='WIT'?'selected':''}>WIT (UTC+9)</option>
+          </select></div>
+        <div class="form-group"><label class="form-label">Format Tanggal</label>
+          <select class="form-select" id="sys-datefmt">
+            <option value="DD MMM YYYY">DD MMM YYYY</option>
+            <option value="DD/MM/YYYY">DD/MM/YYYY</option>
+            <option value="YYYY-MM-DD">YYYY-MM-DD</option>
+          </select></div>
+      </div>
+    </div>
+    <div class="card mb-24">
+      <div class="card-title">Kebijakan Order & Pengiriman</div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Toleransi Selisih Timbangan (Ton)</label>
+          <input class="form-input" type="number" step="0.1" id="sys-tolerance" value="${cfg.tolerance||'0.5'}"/></div>
+        <div class="form-group"><label class="form-label">Maks. Parsial per SO</label>
+          <input class="form-input" type="number" id="sys-maxpartial" value="${cfg.maxPartial||'10'}"/></div>
+      </div>
+      <div class="form-group"><label class="form-label">Wajib Catatan saat Reject SO</label>
+        <select class="form-select" id="sys-reject-note">
+          <option value="1" ${(cfg.rejectNote||'1')==='1'?'selected':''}>Ya, wajib diisi</option>
+          <option value="0" ${cfg.rejectNote==='0'?'selected':''}>Tidak, opsional</option>
+        </select></div>
+    </div>
+    <div class="card mb-24">
+      <div class="card-title">Notifikasi Email</div>
+      <div class="form-group"><label class="form-label">Email Admin DMK (penerima notifikasi)</label>
+        <input class="form-input" type="email" id="sys-admin-email" value="${cfg.adminEmail||'admin@dmkgroup.co.id'}" placeholder="admin@dmkgroup.co.id"/></div>
+      <div class="form-group"><label class="form-label">Kirim notifikasi saat</label>
+        <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px;">
+          ${['PO Baru Masuk','SO Pending Review','DO Tracking Update','BAPB Pending Verifikasi'].map(n=>`
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--mid);cursor:pointer;">
+            <input type="checkbox" checked style="accent-color:var(--blue);width:14px;height:14px;"/> ${n}
+          </label>`).join('')}
+        </div></div>
+    </div>
+    <div class="card mb-24">
+      <div class="card-title">Data & Storage</div>
+      <div class="grid-2" style="gap:12px;margin-bottom:16px;">
+        <div class="field-box"><div class="field-lbl">Storage Mode</div><div class="field-val">${_sb?'Supabase Cloud':'localStorage (Demo)'}</div></div>
+        <div class="field-box"><div class="field-lbl">Ukuran Data Lokal</div><div class="field-val">${(JSON.stringify(localStorage).length/1024).toFixed(1)} KB</div></div>
+        <div class="field-box"><div class="field-lbl">Total Records</div><div class="field-val">${DB.po.length+DB.so.length+DB.dr.length+DB.doList.length+DB.receipts.length} records</div></div>
+        <div class="field-box"><div class="field-lbl">Audit Log Entries</div><div class="field-val">${JSON.parse(localStorage.getItem('dmk_audit')||'[]').length} entries</div></div>
+      </div>
+      <button class="btn btn-danger btn-sm" onclick="if(confirm('Reset semua data demo?')) lsClear()">Reset Data Demo</button>
+    </div>
+    <div class="btn-group">
+      <button class="btn btn-primary" onclick="saveSysConfig()">Simpan Pengaturan</button>
+    </div>
+  </div>`;
+}
+function saveSysConfig() {
+  const cfg = {
+    portalName: $('sys-portal-name')?.value, tz: $('sys-tz')?.value,
+    datefmt: $('sys-datefmt')?.value, tolerance: $('sys-tolerance')?.value,
+    maxPartial: $('sys-maxpartial')?.value, rejectNote: $('sys-reject-note')?.value,
+    adminEmail: $('sys-admin-email')?.value,
+  };
+  localStorage.setItem('dmk_sysconfig', JSON.stringify(cfg));
+  addAuditLog('System Settings', 'Konfigurasi sistem diperbarui');
+  toast('Pengaturan sistem berhasil disimpan.', 'success');
+}
+
+// ── 9. Reports ─────────────────────────────────────────────────
+function renderAdminReports() {
+  const now = new Date(); const months = [];
+  for(let i=5;i>=0;i--){const d=new Date(now.getFullYear(),now.getMonth()-i,1);months.push(d.toLocaleDateString('id-ID',{month:'short',year:'2-digit'}));}
+  const totalTon = DB.doList.filter(d=>d.status==='closed').reduce((a,d)=>a+Number(d.tonase||0),0);
+  const totalRev = totalTon * 12500000;
+  const totalVerified = DB.receipts.filter(r=>r.verifyStatus==='verified').length;
+  return `<div class="page-header"><div class="page-eyebrow">Admin Center</div>
+    <h1 class="page-title">Reports & Analytics</h1>
+    <p class="page-sub">Ringkasan kinerja operasional, penjualan, dan pengiriman DMK Group.</p></div>
+  <div class="container">
+    <div class="grid-4 mb-24">
+      <div class="stat-card"><div class="stat-num">${DB.fmtNum(totalTon)}</div><div class="stat-lbl">Total Ton Terkirim</div></div>
+      <div class="stat-card"><div class="stat-num">${DB.po.length}</div><div class="stat-lbl">Total PO</div></div>
+      <div class="stat-card"><div class="stat-num">${totalVerified}</div><div class="stat-lbl">BAPB Terverifikasi</div></div>
+      <div class="stat-card"><div class="stat-num">${DB.users.filter(u=>u.role==='customer').length}</div><div class="stat-lbl">Total Customer</div></div>
+    </div>
+    <div class="grid-2 mb-24">
+      <div class="card">
+        <div class="card-title">Volume Pengiriman per Customer</div>
+        <div id="chart-customer" style="margin-top:8px;">
+          ${DB.users.filter(u=>u.role==='customer').map(c=>{
+            const ton=DB.doList.filter(d=>d.customerId===c.id&&d.status==='closed').reduce((a,d)=>a+Number(d.tonase||0),0);
+            const pct=totalTon>0?Math.round(ton/totalTon*100):0;
+            return`<div style="margin-bottom:12px;">
+              <div class="flex-between" style="font-size:12px;margin-bottom:4px;"><span>${c.company||c.name}</span><span class="fw-500">${DB.fmtNum(ton)} Ton</span></div>
+              <div style="height:8px;background:#EEF1F7;border-radius:4px;overflow:hidden;">
+                <div style="height:100%;width:${pct}%;background:linear-gradient(90deg,#0057B8,#1A73E8);border-radius:4px;transition:width .6s;"></div>
+              </div>
+            </div>`;}).join('')||emptyState('Belum ada data.')}
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Status DO Saat Ini</div>
+        ${['posted','transit','delivered','closed'].map(st=>{
+          const cnt=DB.doList.filter(d=>d.status===st).length;
+          const pct=DB.doList.length>0?Math.round(cnt/DB.doList.length*100):0;
+          const labels={posted:'Posted',transit:'Dalam Perjalanan',delivered:'Terkirim',closed:'Closed'};
+          const colors={posted:'#0057B8',transit:'#9333EA',delivered:'#0F7B4E',closed:'#4A5568'};
+          return`<div style="margin-bottom:12px;">
+            <div class="flex-between" style="font-size:12px;margin-bottom:4px;"><span>${labels[st]}</span><span class="fw-500">${cnt} DO (${pct}%)</span></div>
+            <div style="height:8px;background:#EEF1F7;border-radius:4px;overflow:hidden;">
+              <div style="height:100%;width:${pct}%;background:${colors[st]};border-radius:4px;transition:width .6s;"></div>
+            </div>
+          </div>`;}).join('')}
+      </div>
+    </div>
+    <div class="card mb-24">
+      <div class="card-title">Rekapitulasi Order per Produk</div>
+      <div class="tbl-wrap" style="margin-top:12px;"><table class="tbl">
+        <thead><tr><th>Produk</th><th>Total PO</th><th>Total Tonase PO</th><th>Total DO Closed</th><th>Tonase Terkirim</th><th>% Realisasi</th></tr></thead>
+        <tbody>${['Aspal Curah Pertamina 60/70','Aspal Curah Pertamina 80/100','Polymer Modified Asphalt (PMA)','Aspal Drum 60/70'].map(prod=>{
+          const pos=DB.po.filter(p=>p.product===prod);
+          const tonPO=pos.reduce((a,p)=>a+Number(p.tonase||0),0);
+          const dosClosed=DB.doList.filter(d=>d.product===prod&&d.status==='closed');
+          const tonDO=dosClosed.reduce((a,d)=>a+Number(d.tonase||0),0);
+          const pct=tonPO>0?Math.round(tonDO/tonPO*100):0;
+          return`<tr><td class="fw-500">${prod}</td><td>${pos.length}</td><td>${DB.fmtNum(tonPO)} T</td>
+            <td>${dosClosed.length}</td><td>${DB.fmtNum(tonDO)} T</td>
+            <td><div style="display:flex;align-items:center;gap:8px;"><div style="flex:1;height:6px;background:#EEF1F7;border-radius:3px;"><div style="width:${pct}%;height:100%;background:var(--blue);border-radius:3px;"></div></div><span style="font-size:11px;font-weight:600;">${pct}%</span></div></td>
+          </tr>`;}).join('')}
+        </tbody>
+      </table></div>
+    </div>
+    <div class="btn-group">
+      <button class="btn btn-outline" onclick="toast('Export ke Excel tersedia setelah integrasi Supabase aktif.','info')">Export Excel</button>
+      <button class="btn btn-outline" onclick="toast('Cetak PDF tersedia setelah integrasi Supabase aktif.','info')">Cetak PDF</button>
+    </div>
+  </div>`;
+}
+function initReportsCharts() { /* chart bars already inline */ }
+
+// ── 10. Audit Logs ────────────────────────────────────────────
+function renderAdminAuditLogs() {
+  const logs = JSON.parse(localStorage.getItem('dmk_audit') || '[]');
+  const filterUser = '';
+  return `<div class="page-header"><div class="page-eyebrow">Admin Center</div>
+    <h1 class="page-title">Audit Logs</h1>
+    <p class="page-sub">Riwayat lengkap semua aktivitas pengguna dan perubahan data di sistem portal.</p></div>
+  <div class="container">
+    <div class="flex-between mb-16">
+      <div class="flex-between" style="gap:8px;">
+        <input class="form-input" id="log-search" placeholder="Cari aksi / user / detail..." style="width:280px;" oninput="filterLogs()"/>
+        <select class="form-select" id="log-role-filter" onchange="filterLogs()" style="width:140px;">
+          <option value="">Semua User</option>
+          ${[...new Set(logs.map(l=>l.user))].map(u=>`<option value="${u}">${u}</option>`).join('')}
+        </select>
+      </div>
+      <div class="flex-between" style="gap:8px;">
+        <span style="font-size:12px;color:var(--muted);">${logs.length} entri log</span>
+        <button class="btn btn-danger btn-sm" onclick="if(confirm('Hapus semua audit log?')){localStorage.removeItem('dmk_audit');adminNav('auditlogs');}">Hapus Semua Log</button>
+      </div>
+    </div>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>Waktu</th><th>User</th><th>Role</th><th>Aksi</th><th>Detail</th><th>IP Address</th></tr></thead>
+      <tbody id="logs-tbody">${renderLogRows(logs)}</tbody>
+    </table></div>
+  </div>`;
+}
+function renderLogRows(logs) {
+  if (!logs.length) return `<tr><td colspan="6">${emptyState('Belum ada aktivitas tercatat.')}</td></tr>`;
+  return logs.map(l=>`<tr>
+    <td style="font-size:11px;white-space:nowrap;">${l.time}</td>
+    <td class="fw-500">${l.user}</td>
+    <td><span class="badge ${l.role==='admin'?'badge-released':'badge-info'}">${l.role}</span></td>
+    <td class="col-blue fw-500">${l.action}</td>
+    <td style="font-size:12px;color:var(--mid);">${l.detail}</td>
+    <td style="font-size:11px;color:var(--muted);">${l.ip}</td>
+  </tr>`).join('');
+}
+function filterLogs() {
+  const logs = JSON.parse(localStorage.getItem('dmk_audit') || '[]');
+  const q = $('log-search')?.value.toLowerCase()||'';
+  const u = $('log-role-filter')?.value||'';
+  const filtered = logs.filter(l=>
+    (!q || l.action.toLowerCase().includes(q) || l.detail.toLowerCase().includes(q) || l.user.toLowerCase().includes(q)) &&
+    (!u || l.user === u)
+  );
+  const tb=$('logs-tbody'); if(tb) tb.innerHTML=renderLogRows(filtered);
+}
+
+// Patch existing admin actions to add audit logs
+const _origSOAction = soAction;
+soAction = function(action) {
+  _origSOAction(action);
+  addAuditLog(action==='approve'?'Approve SO':'Reject SO', `SO ${currentSOId}`);
+  updateAdminBadges();
+};
+const _origSubmitDO = submitDO;
+submitDO = function() {
+  _origSubmitDO();
+  addAuditLog('Buat DO', `DR ${currentDRId}`);
+  updateAdminBadges();
+};
+const _origSubmitTracking = submitTracking;
+submitTracking = function() {
+  _origSubmitTracking();
+  addAuditLog('Update Tracking', `DO ${currentDOId} → ${$('track-status')?.value||''}`);
+};
+const _origVerifyAction = verifyAction;
+verifyAction = function(action) {
+  _origVerifyAction(action);
+  addAuditLog(action==='approve'?'Verifikasi TTD':'Tolak TTD', `BAPB ${currentRCPId}`);
+  updateAdminBadges();
+};
+
 </script>
 </body>
 </html>
