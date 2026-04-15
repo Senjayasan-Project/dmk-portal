@@ -24,8 +24,8 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 // Validasi dan inisialisasi Supabase client
 function _initSupabase() {
   // Cek placeholder — jika URL/key masih default, gunakan mode offline
-  const isPlaceholder = !SUPABASE_URL || SUPABASE_URL.includes('https://slrjqrynjqftfivoarmw.supabase.co') ||
-                        !SUPABASE_ANON_KEY || SUPABASE_ANON_KEY.includes('eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNscmpxcnluanFmdGZpdm9hcm13Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3MTkyNDQsImV4cCI6MjA5MTI5NTI0NH0.iRKpYEyM4rEkxKM36lMTRFgP8GKDKMP8pTXfo02i4Lg');
+  const isPlaceholder = !SUPABASE_URL || SUPABASE_URL.includes('YOUR_PROJECT_ID') ||
+                        !SUPABASE_ANON_KEY || SUPABASE_ANON_KEY.includes('YOUR_ANON');
   if (isPlaceholder) {
     console.info('[DMK Portal] Supabase belum dikonfigurasi → mode offline (localStorage)');
     return null;
