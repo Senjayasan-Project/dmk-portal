@@ -5,27 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
-// ══════════════════════════════════════════════════════
-//  SUPABASE CONFIGURATION
-//  Ganti SUPABASE_URL dan SUPABASE_ANON_KEY dengan
-//  nilai dari: Supabase Dashboard → Settings → API
-// ══════════════════════════════════════════════════════
-// ══════════════════════════════════════════════════════════════
-//  ▼▼▼  KONFIGURASI SUPABASE — ISI DI BAWAH INI  ▼▼▼
-//  Langkah:
-//  1. Buka https://supabase.com/dashboard → pilih project Anda
-//  2. Klik Settings (icon ⚙) → API
-//  3. Copy "Project URL" → paste ke SUPABASE_URL
-//  4. Copy "anon / public" key → paste ke SUPABASE_ANON_KEY
-// ══════════════════════════════════════════════════════════════
-const SUPABASE_URL      = 'https://slrjqrynjqftfivoarmw.supabase.co';   // ← ganti ini
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNscmpxcnluanFmdGZpdm9hcm13Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3MTkyNDQsImV4cCI6MjA5MTI5NTI0NH0.iRKpYEyM4rEkxKM36lMTRFgP8GKDKMP8pTXfo02i4Lg';// ══════════════════════════════════════════════════════════════
+const SUPABASE_URL      = 'https://slrjqrynjqftfivoarmw.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNscmpxcnluanFmdGZpdm9hcm13Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3MTkyNDQsImV4cCI6MjA5MTI5NTI0NH0.iRKpYEyM4rEkxKM36lMTRFgP8GKDKMP8pTXfo02i4Lg';
 
 // Validasi dan inisialisasi Supabase client
 function _initSupabase() {
   // Cek placeholder — jika URL/key masih default, gunakan mode offline
-  const isPlaceholder = !SUPABASE_URL || SUPABASE_URL.includes('YOUR_PROJECT_ID') ||
-                        !SUPABASE_ANON_KEY || SUPABASE_ANON_KEY.includes('YOUR_ANON');
+  const isPlaceholder = !SUPABASE_URL || SUPABASE_URL.includes('https://slrjqrynjqftfivoarmw.supabase.co') ||
+                        !SUPABASE_ANON_KEY || SUPABASE_ANON_KEY.includes('eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNscmpxcnluanFmdGZpdm9hcm13Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3MTkyNDQsImV4cCI6MjA5MTI5NTI0NH0.iRKpYEyM4rEkxKM36lMTRFgP8GKDKMP8pTXfo02i4Lg');
   if (isPlaceholder) {
     console.info('[DMK Portal] Supabase belum dikonfigurasi → mode offline (localStorage)');
     return null;
@@ -110,7 +97,7 @@ const API = {
       catatan: payload.catatan,
       status: 'pending'
     };
-    const { data, error } = await _sb.from('purchase_orders').insert(row).select().single();
+    const { data, error } = await _sb.from('purchase_orders').insert(row).select().maybesingle();
     if (error) throw error;
     return data;
   },
@@ -125,7 +112,7 @@ const API = {
 
   async createSO(poId) {
     if (!_sb) return DB.createSO(poId);
-    const po = await _sb.from('purchase_orders').select('*').eq('id', poId).single();
+    const po = await _sb.from('purchase_orders').select('*').eq('id', poId).maybesingle();
     if (po.error) throw po.error;
     const p = po.data;
     const noDoc = await this.nextNumber('so');
@@ -135,7 +122,7 @@ const API = {
       product: p.product, tonase_total: p.tonase, tonase_sisa: p.tonase,
       harga: p.harga, lokasi: p.lokasi, status: 'pending'
     };
-    const { data, error } = await _sb.from('sales_orders').insert(row).select().single();
+    const { data, error } = await _sb.from('sales_orders').insert(row).select().maybeSingle();
     if (error) throw error;
     await _sb.from('purchase_orders').update({ so_id: data.id, status: 'so-created' }).eq('id', poId);
     return data;
@@ -146,7 +133,7 @@ const API = {
     const updates = action === 'approve'
       ? { status: 'released', catatan, approved_at: new Date().toISOString().split('T')[0], approved_by: DB.session?.name }
       : { status: 'rejected', catatan };
-    const { data, error } = await _sb.from('sales_orders').update(updates).eq('id', soId).select().single();
+    const { data, error } = await _sb.from('sales_orders').update(updates).eq('id', soId).select().maybeSingle();
     if (error) throw error;
     const poStatus = action === 'approve' ? 'approved' : 'rejected';
     await _sb.from('purchase_orders').update({ status: poStatus }).eq('so_id', soId);
@@ -164,7 +151,7 @@ const API = {
   async createDR(payload) {
     if (!_sb) return DB.createDR(payload);
     const noDoc = await this.nextNumber('dr');
-    const so = await _sb.from('sales_orders').select('*').eq('id', payload.soId).single();
+    const so = await _sb.from('sales_orders').select('*').eq('id', payload.soId).maybeSingle();
     const row = {
       no_dr: noDoc, so_id: payload.soId,
       customer_id: DB.session.id, customer_name: DB.session.name,
@@ -172,7 +159,7 @@ const API = {
       tanggal_kirim: payload.tanggalKirim, tonase: payload.tonase,
       tujuan: payload.tujuan, instruksi: payload.instruksi, status: 'pending'
     };
-    const { data, error } = await _sb.from('delivery_requests').insert(row).select().single();
+    const { data, error } = await _sb.from('delivery_requests').insert(row).select().maybeSingle();
     if (error) throw error;
     return data;
   },
@@ -187,7 +174,7 @@ const API = {
 
   async createDO(payload) {
     if (!_sb) return DB.createDO(payload);
-    const dr = await _sb.from('delivery_requests').select('*').eq('id', payload.drId).single();
+    const dr = await _sb.from('delivery_requests').select('*').eq('id', payload.drId).maybeSingle();
     const d = dr.data;
     const noDoc = await this.nextNumber('do');
     const row = {
@@ -199,7 +186,7 @@ const API = {
       status: 'posted', track_status: 'loading',
       posted_at: new Date().toISOString().split('T')[0]
     };
-    const { data, error } = await _sb.from('delivery_orders').insert(row).select().single();
+    const { data, error } = await _sb.from('delivery_orders').insert(row).select().maybeSingle();
     if (error) throw error;
     await _sb.from('delivery_requests').update({ status: 'do-created', do_id: data.id }).eq('id', payload.drId);
     await _sb.from('sales_orders').rpc || await _sb.from('sales_orders')
@@ -210,7 +197,7 @@ const API = {
   async updateDOTracking(doId, trackStatus) {
     if (!_sb) return DB.updateTracking(doId, trackStatus);
     const { data, error } = await _sb.from('delivery_orders')
-      .update({ track_status: trackStatus }).eq('id', doId).select().single();
+      .update({ track_status: trackStatus }).eq('id', doId).select().maybeSingle();
     if (error) throw error;
     return data;
   },
@@ -235,7 +222,7 @@ const API = {
       kondisi: payload.kondisi, segel: payload.segel, catatan: payload.catatan,
       sig_data_url: sigDataUrl, verify_status: 'pending'
     };
-    const { data, error } = await _sb.from('receipts').insert(row).select().single();
+    const { data, error } = await _sb.from('receipts').insert(row).select().maybeSingle();
     if (error) throw error;
     await _sb.from('delivery_orders')
       .update({ status: 'delivered', track_status: 'delivered', receipt_id: data.id })
@@ -251,7 +238,7 @@ const API = {
       verified_at: new Date().toISOString().split('T')[0],
       verified_by: DB.session?.name
     };
-    const { data, error } = await _sb.from('receipts').update(updates).eq('id', rcpId).select().single();
+    const { data, error } = await _sb.from('receipts').update(updates).eq('id', rcpId).select().maybeSingle();
     if (error) throw error;
     if (action === 'approve') {
       await _sb.from('delivery_orders').update({ status: 'closed' }).eq('receipt_id', rcpId);
@@ -3178,7 +3165,7 @@ function renderAdminUsers() {
       <thead><tr><th>ID</th><th>Nama</th><th>Username</th><th>Role</th><th>Perusahaan</th><th>Status</th><th>Aksi</th></tr></thead>
       <tbody id="users-tbody">${renderUserRows(users)}</tbody>
     </table></div>
-  </div>\`;
+  </div>;
 }
 
 function renderUserRows(users) {
