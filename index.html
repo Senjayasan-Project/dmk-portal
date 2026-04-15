@@ -19,14 +19,14 @@
 //  4. Copy "anon / public" key → paste ke SUPABASE_ANON_KEY
 // ══════════════════════════════════════════════════════════════
 const SUPABASE_URL      = 'https://slrjqrynjqftfivoarmw.supabase.co';   // ← ganti ini
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNscmpxcnluanFmdGZpdm9hcm13Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3MTkyNDQsImV4cCI6MjA5MTI5NTI0NH0.iRKpYEyM4rEkxKM36lMTRFgP8GKDKMP8pTXfo02i4Lg';// ← ganti ini
-// ══════════════════════════════════════════════════════════════
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNscmpxcnluanFmdGZpdm9hcm13Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3MTkyNDQsImV4cCI6MjA5MTI5NTI0NH0.iRKpYEyM4rEkxKM36lMTRFgP8GKDKMP8pTXfo02i4Lg';// ══════════════════════════════════════════════════════════════
 
 // Validasi dan inisialisasi Supabase client
 function _initSupabase() {
-  const isConfigured = SUPABASE_URL   && !SUPABASE_URL.includes('https://slrjqrynjqftfivoarmw.supabase.co') &&
-                       SUPABASE_ANON_KEY && !SUPABASE_ANON_KEY.includes('eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNscmpxcnluanFmdGZpdm9hcm13Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3MTkyNDQsImV4cCI6MjA5MTI5NTI0NH0.iRKpYEyM4rEkxKM36lMTRFgP8GKDKMP8pTXfo02i4Lg');
-  if (!isConfigured) {
+  // Cek placeholder — jika URL/key masih default, gunakan mode offline
+  const isPlaceholder = !SUPABASE_URL || SUPABASE_URL.includes('https://slrjqrynjqftfivoarmw.supabase.co') ||
+                        !SUPABASE_ANON_KEY || SUPABASE_ANON_KEY.includes('eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNscmpxcnluanFmdGZpdm9hcm13Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3MTkyNDQsImV4cCI6MjA5MTI5NTI0NH0.iRKpYEyM4rEkxKM36lMTRFgP8GKDKMP8pTXfo02i4Lg');
+  if (isPlaceholder) {
     console.info('[DMK Portal] Supabase belum dikonfigurasi → mode offline (localStorage)');
     return null;
   }
@@ -69,9 +69,20 @@ const API = {
       const u = DB.users.find(x => x.username===username && x.password===password);
       return u ? { data: u, error: null } : { data: null, error: 'Invalid credentials' };
     }
-    const { data, error } = await _sb.from('users')
-      .select('*').eq('username', username).eq('password', password).single();
-    return { data, error };
+    try {
+      // Gunakan maybeSingle() agar tidak throw jika tidak ada baris
+      const { data, error } = await _sb.from('users')
+        .select('*')
+        .eq('username', username)
+        .eq('password', password)
+        .maybeSingle();
+      if (error) return { data: null, error: error.message };
+      if (!data)  return { data: null, error: 'Username atau password salah' };
+      return { data, error: null };
+    } catch(e) {
+      console.error('[DMK] Login Supabase error:', e);
+      return { data: null, error: e.message };
+    }
   },
 
   async getPOs(customerId, role) {
@@ -2768,6 +2779,8 @@ function soAction(action) {
   }
   closeModal('modal-so');
   toast(action === 'approve' ? 'SO berhasil disetujui!' : 'SO ditolak.', action === 'approve' ? 'success' : 'error');
+  addAuditLog(action === 'approve' ? 'Approve SO' : 'Reject SO', 'SO ' + currentSOId);
+  updateAdminBadges();
   renderAdminSO();
   renderAdminDash();
 }
@@ -3055,23 +3068,38 @@ async function doLoginAsync() {
   $('loginErr').style.display = 'none';
 
   if (_sb) {
-    // Supabase mode
+    // ── Supabase mode ──
     try {
       const { data, error } = await API.login(u, p);
       if (!data || error) {
-        $('loginErr').style.display = 'block'; return;
+        const errEl = $('loginErr');
+        if (errEl) { errEl.textContent = error || 'Username atau password salah.'; errEl.style.display = 'block'; }
+        return;
+      }
+      // Pastikan role sesuai pilihan di login page
+      if (data.role !== selectedRole) {
+        const errEl = $('loginErr');
+        if (errEl) { errEl.textContent = 'Role tidak sesuai. Pilih role yang benar.'; errEl.style.display = 'block'; }
+        return;
       }
       DB.session = {
         id: data.id, role: data.role, name: data.name,
         company: data.company, avatar: data.avatar, username: data.username
       };
     } catch(e) {
-      $('loginErr').style.display = 'block'; return;
+      console.error('[DMK] Login error:', e);
+      const errEl = $('loginErr');
+      if (errEl) { errEl.textContent = 'Koneksi gagal: ' + e.message; errEl.style.display = 'block'; }
+      return;
     }
   } else {
-    // Local mode
+    // ── Local mode ──
     const user = DB.users.find(x => x.username===u && x.password===p && x.role===selectedRole);
-    if (!user) { $('loginErr').style.display = 'block'; return; }
+    if (!user) {
+      const errEl = $('loginErr');
+      if (errEl) { errEl.textContent = 'Username atau password salah.'; errEl.style.display = 'block'; }
+      return;
+    }
     DB.session = user;
   }
 
@@ -3159,16 +3187,17 @@ function renderUserRows(users) {
     const roleBadge = u.role === 'admin'
       ? '<span class="badge badge-released">admin</span>'
       : '<span class="badge badge-info">customer</span>';
+    const uid = u.id;
     return '<tr>' +
-      '<td class="col-blue fw-500">' + u.id + '</td>' +
+      '<td class="col-blue fw-500">' + uid + '</td>' +
       '<td><div class="fw-500">' + u.name + '</div><div style="font-size:11px;color:var(--muted)">' + u.username + '</div></td>' +
       '<td>' + u.username + '</td>' +
       '<td>' + roleBadge + '</td>' +
       '<td>' + (u.company || '—') + '</td>' +
       '<td><span class="badge badge-approved">Aktif</span></td>' +
       '<td><div class="tbl-actions">' +
-        '<button class="btn btn-ghost btn-sm" onclick="editUser('' + u.id + '')">Edit</button> ' +
-        '<button class="btn btn-danger btn-sm" onclick="deleteUser('' + u.id + '')">Hapus</button>' +
+        '<button class="btn btn-ghost btn-sm" onclick="editUser(&quot;' + uid + '&quot;)">Edit</button> ' +
+        '<button class="btn btn-danger btn-sm" onclick="deleteUser(&quot;' + uid + '&quot;)">Hapus</button>' +
       '</div></td>' +
     '</tr>';
   }).join('');
@@ -3829,30 +3858,8 @@ function filterLogs() {
   const tb=$('logs-tbody'); if(tb) tb.innerHTML=renderLogRows(filtered);
 }
 
-// Patch existing admin actions to add audit logs
-const _origSOAction = soAction;
-soAction = function(action) {
-  _origSOAction(action);
-  addAuditLog(action==='approve'?'Approve SO':'Reject SO', `SO ${currentSOId}`);
-  updateAdminBadges();
-};
-const _origSubmitDO = submitDO;
-submitDO = function() {
-  _origSubmitDO();
-  addAuditLog('Buat DO', `DR ${currentDRId}`);
-  updateAdminBadges();
-};
-const _origSubmitTracking = submitTracking;
-submitTracking = function() {
-  _origSubmitTracking();
-  addAuditLog('Update Tracking', `DO ${currentDOId} → ${$('track-status')?.value||''}`);
-};
-const _origVerifyAction = verifyAction;
-verifyAction = function(action) {
-  _origVerifyAction(action);
-  addAuditLog(action==='approve'?'Verifikasi TTD':'Tolak TTD', `BAPB ${currentRCPId}`);
-  updateAdminBadges();
-};
+// Audit log calls embedded directly in each action function above
+// (patch wrappers removed to prevent double-execution)
 
 </script>
 </body>
