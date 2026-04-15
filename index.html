@@ -11,8 +11,9 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 // Validasi dan inisialisasi Supabase client
 function _initSupabase() {
   // Cek placeholder — jika URL/key masih default, gunakan mode offline
-  const isPlaceholder = !SUPABASE_URL || SUPABASE_URL.includes('https://slrjqrynjqftfivoarmw.supabase.co') ||
-                        !SUPABASE_ANON_KEY || SUPABASE_ANON_KEY.includes('eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNscmpxcnluanFmdGZpdm9hcm13Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3MTkyNDQsImV4cCI6MjA5MTI5NTI0NH0.iRKpYEyM4rEkxKM36lMTRFgP8GKDKMP8pTXfo02i4Lg');
+ const isPlaceholder =
+  !SUPABASE_URL || SUPABASE_URL === 'YOUR_SUPABASE_URL' ||
+  !SUPABASE_ANON_KEY || SUPABASE_ANON_KEY === 'YOUR_SUPABASE_KEY';
   if (isPlaceholder) {
     console.info('[DMK Portal] Supabase belum dikonfigurasi → mode offline (localStorage)');
     return null;
@@ -61,7 +62,11 @@ const API = {
       const { data, error } = await _sb.from('users')
         .select('*')
         .eq('username', username)
-        .eq('password', password)
+        //.eq('password', password)
+          const { data, error } = await _sb.auth.signInWithPassword({
+          email: username,
+          password: password
+          });
         .maybeSingle();
       if (error) return { data: null, error: error.message };
       if (!data)  return { data: null, error: 'Username atau password salah' };
@@ -97,7 +102,7 @@ const API = {
       catatan: payload.catatan,
       status: 'pending'
     };
-    const { data, error } = await _sb.from('purchase_orders').insert(row).select().maybesingle();
+    const { data, error } = await _sb.from('purchase_orders').insert(row).select().maybeSingle();
     if (error) throw error;
     return data;
   },
@@ -112,7 +117,13 @@ const API = {
 
   async createSO(poId) {
     if (!_sb) return DB.createSO(poId);
-    const po = await _sb.from('purchase_orders').select('*').eq('id', poId).maybesingle();
+    const { data: p, error } = await _sb
+  .from('purchase_orders')
+  .select('*')
+  .eq('id', poId)
+  .maybeSingle();
+
+if (error || !p) throw error || new Error('PO tidak ditemukan');
     if (po.error) throw po.error;
     const p = po.data;
     const noDoc = await this.nextNumber('so');
@@ -151,7 +162,13 @@ const API = {
   async createDR(payload) {
     if (!_sb) return DB.createDR(payload);
     const noDoc = await this.nextNumber('dr');
-    const so = await _sb.from('sales_orders').select('*').eq('id', payload.soId).maybeSingle();
+    const { data: so, error } = await _sb
+      .from('sales_orders')
+      .select('*')
+      .eq('id', payload.soId)
+      .maybeSingle();
+
+if (error || !so) throw error || new Error('SO tidak ditemukan'); 
     const row = {
       no_dr: noDoc, so_id: payload.soId,
       customer_id: DB.session.id, customer_name: DB.session.name,
@@ -189,8 +206,12 @@ const API = {
     const { data, error } = await _sb.from('delivery_orders').insert(row).select().maybeSingle();
     if (error) throw error;
     await _sb.from('delivery_requests').update({ status: 'do-created', do_id: data.id }).eq('id', payload.drId);
-    await _sb.from('sales_orders').rpc || await _sb.from('sales_orders')
-      .update({ tonase_sisa: _sb.rpc ? undefined : null }).eq('id', d.so_id);
+    await _sb.from('sales_orders').rpc ||await _sb
+  .from('sales_orders')
+  .update({
+    tonase_sisa: d.tonase_sisa - d.tonase
+  })
+  .eq('id', d.so_id);.eq('id', d.so_id);
     return data;
   },
 
@@ -249,7 +270,7 @@ const API = {
   async nextNumber(prefix) {
     if (!_sb) return DB.nextId(prefix);
     const { data, error } = await _sb.rpc('get_next_number', { doc_prefix: prefix });
-    if (error || !data) {
+  if (error || !data || typeof data !== 'string') {
       const y = new Date().getFullYear();
       return `${prefix.toUpperCase()}-${y}-${String(Math.floor(Math.random()*9000)+1000)}`;
     }
