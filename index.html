@@ -5,22 +5,38 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
+// ══════════════════════════════════════════════════════
+//  SUPABASE CONFIGURATION
+//  Ganti SUPABASE_URL dan SUPABASE_ANON_KEY dengan
+//  nilai dari: Supabase Dashboard → Settings → API
+// ══════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════
+//  ▼▼▼  KONFIGURASI SUPABASE — ISI DI BAWAH INI  ▼▼▼
+//  Langkah:
+//  1. Buka https://supabase.com/dashboard → pilih project Anda
+//  2. Klik Settings (icon ⚙) → API
+//  3. Copy "Project URL" → paste ke SUPABASE_URL
+//  4. Copy "anon / public" key → paste ke SUPABASE_ANON_KEY
+// ══════════════════════════════════════════════════════════════
 const SUPABASE_URL      = 'https://slrjqrynjqftfivoarmw.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNscmpxcnluanFmdGZpdm9hcm13Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3MTkyNDQsImV4cCI6MjA5MTI5NTI0NH0.iRKpYEyM4rEkxKM36lMTRFgP8GKDKMP8pTXfo02i4Lg';
+// ══════════════════════════════════════════════════════════════
 
 // Validasi dan inisialisasi Supabase client
 function _initSupabase() {
   // Cek placeholder — jika URL/key masih default, gunakan mode offline
- const isPlaceholder =
-  !SUPABASE_URL || SUPABASE_URL === 'YOUR_SUPABASE_URL' ||
-  !SUPABASE_ANON_KEY || SUPABASE_ANON_KEY === 'YOUR_SUPABASE_KEY';
+  // Hanya blokir jika masih placeholder — URL asli selalu diloloskan
+  const isPlaceholder = !SUPABASE_URL || 
+                        (SUPABASE_URL.includes('YOUR_PROJECT_ID') && !SUPABASE_URL.includes('supabase.co')) ||
+                        !SUPABASE_ANON_KEY || 
+                        (SUPABASE_ANON_KEY === 'YOUR_ANON_PUBLIC_KEY');
   if (isPlaceholder) {
     console.info('[DMK Portal] Supabase belum dikonfigurasi → mode offline (localStorage)');
     return null;
   }
   try {
     const client = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-      auth: { persistSession: true },
+      auth: { persistSession: false },
       global: { headers: { 'x-application-name': 'dmk-portal' } }
     });
     console.info('[DMK Portal] Supabase client berhasil diinisialisasi:', SUPABASE_URL);
@@ -62,11 +78,7 @@ const API = {
       const { data, error } = await _sb.from('users')
         .select('*')
         .eq('username', username)
-        //.eq('password', password)
-          const { data, error } = await _sb.auth.signInWithPassword({
-          email: username,
-          password: password
-          });
+        .eq('password', password)
         .maybeSingle();
       if (error) return { data: null, error: error.message };
       if (!data)  return { data: null, error: 'Username atau password salah' };
@@ -117,13 +129,7 @@ const API = {
 
   async createSO(poId) {
     if (!_sb) return DB.createSO(poId);
-    const { data: p, error } = await _sb
-  .from('purchase_orders')
-  .select('*')
-  .eq('id', poId)
-  .maybeSingle();
-
-if (error || !p) throw error || new Error('PO tidak ditemukan');
+    const po = await _sb.from('purchase_orders').select('*').eq('id', poId).single();
     if (po.error) throw po.error;
     const p = po.data;
     const noDoc = await this.nextNumber('so');
@@ -162,17 +168,11 @@ if (error || !p) throw error || new Error('PO tidak ditemukan');
   async createDR(payload) {
     if (!_sb) return DB.createDR(payload);
     const noDoc = await this.nextNumber('dr');
-    const { data: so, error } = await _sb
-      .from('sales_orders')
-      .select('*')
-      .eq('id', payload.soId)
-      .maybeSingle();
-
-if (error || !so) throw error || new Error('SO tidak ditemukan'); 
+    const so = await _sb.from('sales_orders').select('*').eq('id', payload.soId).single();
     const row = {
       no_dr: noDoc, so_id: payload.soId,
       customer_id: DB.session.id, customer_name: DB.session.name,
-     product: so?.product,so_tonase_total: so?.tonase_total,
+      product: so.data?.product, so_tonase_total: so.data?.tonase_total,
       tanggal_kirim: payload.tanggalKirim, tonase: payload.tonase,
       tujuan: payload.tujuan, instruksi: payload.instruksi, status: 'pending'
     };
@@ -191,7 +191,7 @@ if (error || !so) throw error || new Error('SO tidak ditemukan');
 
   async createDO(payload) {
     if (!_sb) return DB.createDO(payload);
-    const dr = await _sb.from('delivery_requests').select('*').eq('id', payload.drId).maybeSingle();
+    const dr = await _sb.from('delivery_requests').select('*').eq('id', payload.drId).single();
     const d = dr.data;
     const noDoc = await this.nextNumber('do');
     const row = {
@@ -206,10 +206,12 @@ if (error || !so) throw error || new Error('SO tidak ditemukan');
     const { data, error } = await _sb.from('delivery_orders').insert(row).select().maybeSingle();
     if (error) throw error;
     await _sb.from('delivery_requests').update({ status: 'do-created', do_id: data.id }).eq('id', payload.drId);
-    await _sb
-  .from('sales_orders')
-  .update({ tonase_sisa: d.tonase_sisa - d.tonase })
-  .eq('id', d.so_id);
+    // Update tonase_sisa di sales_orders setelah DO dibuat
+    const soRow = await _sb.from('sales_orders').select('tonase_sisa').eq('id', d.so_id).maybeSingle();
+    if (soRow.data) {
+      const newSisa = Math.max(0, Number(soRow.data.tonase_sisa || 0) - Number(payload.tonase || 0));
+      await _sb.from('sales_orders').update({ tonase_sisa: newSisa }).eq('id', d.so_id);
+    }
     return data;
   },
 
@@ -268,7 +270,7 @@ if (error || !so) throw error || new Error('SO tidak ditemukan');
   async nextNumber(prefix) {
     if (!_sb) return DB.nextId(prefix);
     const { data, error } = await _sb.rpc('get_next_number', { doc_prefix: prefix });
-  if (error || !data || typeof data !== 'string') {
+    if (error || !data) {
       const y = new Date().getFullYear();
       return `${prefix.toUpperCase()}-${y}-${String(Math.floor(Math.random()*9000)+1000)}`;
     }
@@ -3134,35 +3136,7 @@ function addAuditLog(action, detail) {
 }
 
 // ── Dashboard Admin ─────────────────────────────────────────────
-function renderAdminDash() {
-  const allPOs = DB.po; const allSOs = DB.so; const allDOs = DB.doList; const allRCP = DB.receipts;
-  const pendSO = allSOs.filter(s=>s.status==='pending').length;
-  const pendDO = DB.dr.filter(d=>d.status==='pending').length;
-  const pendSig = allRCP.filter(r=>r.verifyStatus==='pending').length;
-  const totalRev = allDOs.filter(d=>d.status==='closed').reduce((a,d)=>a+Number(d.tonase||0)*12500000,0);
-  $('a-stats').innerHTML = [
-    ['stat-card', `<div class="stat-num">${allPOs.length}</div><div class="stat-lbl">Total PO Masuk</div>`],
-    ['stat-card', `<div class="stat-num">${pendSO}</div><div class="stat-lbl">SO Pending</div>`],
-    ['stat-card', `<div class="stat-num">${allDOs.filter(d=>!['closed'].includes(d.status)).length}</div><div class="stat-lbl">DO Aktif</div>`],
-    ['stat-card', `<div class="stat-num">${pendSig}</div><div class="stat-lbl">TTD Pending</div>`],
-  ].map(([c,h])=>`<div class="${c}">${h}</div>`).join('');
-  const pendingSOs = allSOs.filter(s=>s.status==='pending');
-  $('a-dash-so').innerHTML = pendingSOs.length ? pendingSOs.map(s=>`
-    <div class="flex-between" style="padding:10px 0;border-bottom:1px solid var(--navy-border);">
-      <div><span class="col-blue fw-500">${s.id}</span>
-      <span class="col-muted" style="font-size:11px;margin-left:8px;">${s.customerName}</span>
-      <div style="font-size:11px;color:var(--muted);">${s.product} · ${DB.fmtNum(s.tonaseTotal)} Ton</div></div>
-      <button class="btn btn-primary btn-sm" onclick="openSOModal('${s.id}')">Review</button>
-    </div>`).join('') : emptyState('Tidak ada SO pending.');
-  const pendingRCP = allRCP.filter(r=>r.verifyStatus==='pending');
-  $('a-dash-verify').innerHTML = pendingRCP.length ? pendingRCP.map(r=>`
-    <div class="flex-between" style="padding:10px 0;border-bottom:1px solid var(--navy-border);">
-      <div><span class="col-blue fw-500">${r.id}</span>
-      <span class="col-muted" style="font-size:11px;margin-left:8px;">${r.customerName}</span>
-      <div style="font-size:11px;color:var(--muted);">${r.doId} · ${DB.fmtNum(r.timbangan)} Ton</div></div>
-      <button class="btn btn-primary btn-sm" onclick="openVerifyModal('${r.id}')">Verifikasi</button>
-    </div>`).join('') : emptyState('Tidak ada BAPB pending.');
-}
+
 
 // ── 1. User Management ─────────────────────────────────────────
 function renderAdminUsers() {
@@ -3184,7 +3158,7 @@ function renderAdminUsers() {
       <thead><tr><th>ID</th><th>Nama</th><th>Username</th><th>Role</th><th>Perusahaan</th><th>Status</th><th>Aksi</th></tr></thead>
       <tbody id="users-tbody">${renderUserRows(users)}</tbody>
     </table></div>
-  </div>;
+  </div>`;
 }
 
 function renderUserRows(users) {
