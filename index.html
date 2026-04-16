@@ -20,7 +20,7 @@ function _initSupabase() {
   }
   try {
     const client = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-      auth: { persistSession: false },
+      auth: { persistSession: true },
       global: { headers: { 'x-application-name': 'dmk-portal' } }
     });
     console.info('[DMK Portal] Supabase client berhasil diinisialisasi:', SUPABASE_URL);
@@ -172,7 +172,7 @@ if (error || !so) throw error || new Error('SO tidak ditemukan');
     const row = {
       no_dr: noDoc, so_id: payload.soId,
       customer_id: DB.session.id, customer_name: DB.session.name,
-      product: so.data?.product, so_tonase_total: so.data?.tonase_total,
+     product: so?.product,so_tonase_total: so?.tonase_total,
       tanggal_kirim: payload.tanggalKirim, tonase: payload.tonase,
       tujuan: payload.tujuan, instruksi: payload.instruksi, status: 'pending'
     };
@@ -206,12 +206,10 @@ if (error || !so) throw error || new Error('SO tidak ditemukan');
     const { data, error } = await _sb.from('delivery_orders').insert(row).select().maybeSingle();
     if (error) throw error;
     await _sb.from('delivery_requests').update({ status: 'do-created', do_id: data.id }).eq('id', payload.drId);
-    await _sb.from('sales_orders').rpc ||await _sb
+    await _sb
   .from('sales_orders')
-  .update({
-    tonase_sisa: d.tonase_sisa - d.tonase
-  })
-  .eq('id', d.so_id);.eq('id', d.so_id);
+  .update({ tonase_sisa: d.tonase_sisa - d.tonase })
+  .eq('id', d.so_id);
     return data;
   },
 
