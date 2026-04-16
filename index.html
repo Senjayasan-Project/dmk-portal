@@ -896,6 +896,56 @@ input[type="date"] { color-scheme: light; }
   .admin-topbar { padding: 0 12px; }
   .admin-main .container { padding: 20px 16px; }
 }
+
+/* ── NOTIF PANEL ── */
+.notif-panel {
+  position: fixed; top: 60px; right: 0; bottom: 0; width: 380px; z-index: 400;
+  background: #FFFFFF; border-left: 1px solid var(--navy-border);
+  box-shadow: -4px 0 24px rgba(0,87,184,0.12);
+  display: flex; flex-direction: column;
+  transform: translateX(100%); transition: transform .28s ease;
+}
+.notif-panel.open { transform: translateX(0); }
+.notif-panel-header {
+  padding: 16px 20px; border-bottom: 1px solid var(--navy-border);
+  display: flex; align-items: center; justify-content: space-between;
+  background: linear-gradient(135deg, #0057B8, #1A73E8);
+}
+.notif-panel-title { font-size: 14px; font-weight: 700; color: #FFFFFF; letter-spacing: .5px; }
+.notif-panel-close {
+  background: rgba(255,255,255,0.2); border: none; color: #fff;
+  width: 28px; height: 28px; border-radius: 50%; cursor: pointer;
+  font-size: 16px; display: flex; align-items: center; justify-content: center;
+  transition: background .15s;
+}
+.notif-panel-close:hover { background: rgba(255,255,255,0.35); }
+.notif-panel-body { flex: 1; overflow-y: auto; padding: 8px 0; }
+.notif-item {
+  padding: 14px 20px; border-bottom: 1px solid var(--navy-border);
+  cursor: pointer; transition: background .15s; display: flex; gap: 12px; align-items: flex-start;
+}
+.notif-item:hover { background: var(--blue-dim); }
+.notif-item.unread { background: #EBF2FF; border-left: 3px solid var(--blue); }
+.notif-icon {
+  width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center; font-size: 15px;
+}
+.notif-icon-so   { background: rgba(0,87,184,0.12); }
+.notif-icon-ttd  { background: rgba(15,123,78,0.12); }
+.notif-icon-dr   { background: rgba(180,83,9,0.12); }
+.notif-icon-po   { background: rgba(192,57,43,0.12); }
+.notif-content { flex: 1; min-width: 0; }
+.notif-title { font-size: 13px; font-weight: 600; color: var(--white); margin-bottom: 2px; }
+.notif-desc  { font-size: 11px; color: var(--muted); line-height: 1.5; }
+.notif-time  { font-size: 10px; color: var(--muted); margin-top: 4px; }
+.notif-empty { text-align: center; padding: 48px 20px; color: var(--muted); font-size: 13px; }
+.notif-overlay {
+  position: fixed; inset: 0; z-index: 399;
+  background: rgba(13,27,62,0.18);
+  display: none;
+}
+.notif-overlay.open { display: block; }
+@media (max-width: 640px) { .notif-panel { width: 100%; } }
 </style>
 </head>
 <body>
@@ -1292,7 +1342,7 @@ input[type="date"] { color-scheme: light; }
       </div>
     </div>
     <div class="admin-topbar-right">
-      <div class="admin-notif" id="admin-notif-btn" onclick="adminNav('dashboard')" title="Notifikasi">
+      <div class="admin-notif" id="admin-notif-btn" onclick="openNotifPanel()" title="Lihat Notifikasi">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
         <span class="notif-badge" id="admin-notif-count" style="display:none;">0</span>
       </div>
@@ -1537,6 +1587,39 @@ input[type="date"] { color-scheme: light; }
     <div class="btn-group">
       <button class="btn btn-primary" onclick="saveUser()">Simpan</button>
       <button class="btn btn-ghost" onclick="closeModal('modal-user')">Batal</button>
+    </div>
+  </div>
+</div>
+
+<!-- NOTIF OVERLAY -->
+<div class="notif-overlay" id="notif-overlay" onclick="closeNotifPanel()"></div>
+
+<!-- NOTIF PANEL -->
+<div class="notif-panel" id="notif-panel">
+  <div class="notif-panel-header">
+    <span class="notif-panel-title">🔔 Notifikasi</span>
+    <button class="notif-panel-close" onclick="closeNotifPanel()">✕</button>
+  </div>
+  <div class="notif-panel-body" id="notif-panel-body">
+    <div class="notif-empty">Tidak ada notifikasi baru.</div>
+  </div>
+  <div style="padding:12px 20px;border-top:1px solid var(--navy-border);display:flex;gap:8px;">
+    <button class="btn btn-ghost btn-sm" style="flex:1;" onclick="markAllNotifRead()">Tandai Semua Dibaca</button>
+    <button class="btn btn-outline btn-sm" style="flex:1;" onclick="adminNav('auditlogs');closeNotifPanel()">Lihat Log Lengkap</button>
+  </div>
+</div>
+
+<!-- MODAL: Master Data (Produk / Terminal / Armada) -->
+<div class="modal-bg" id="modal-masterdata">
+  <div class="modal-box">
+    <div class="modal-header">
+      <span class="modal-title" id="md-modal-title">Edit Item</span>
+      <button class="modal-close" onclick="closeModal('modal-masterdata')">✕</button>
+    </div>
+    <div id="md-modal-form"></div>
+    <div class="btn-group">
+      <button class="btn btn-primary" onclick="saveMDItem()">Simpan</button>
+      <button class="btn btn-ghost" onclick="closeModal('modal-masterdata')">Batal</button>
     </div>
   </div>
 </div>
@@ -2675,6 +2758,8 @@ function updateAdminBadges() {
   const bd = $('badge-delivery'); if(bd){ bd.textContent = pendingDO; bd.style.display = pendingDO ? 'flex' : 'none'; }
   const bs = $('badge-signature'); if(bs){ bs.textContent = pendingSig; bs.style.display = pendingSig ? 'flex' : 'none'; }
   const nc = $('admin-notif-count'); if(nc){ const t=totalPend+pendingSig; nc.textContent=t; nc.style.display=t?'flex':'none'; }
+  // Juga update notif badge dengan count unread
+  if (typeof updateNotifBadgeCount === 'function') updateNotifBadgeCount();
 }
 
 function toggleSidebar() {
@@ -3177,7 +3262,7 @@ function renderUserRows(users) {
       '<td><span class="badge badge-approved">Aktif</span></td>' +
       '<td><div class="tbl-actions">' +
         '<button class="btn btn-ghost btn-sm" onclick="editUser(&quot;' + uid + '&quot;)">Edit</button> ' +
-        '<button class="btn btn-danger btn-sm" onclick="deleteUser(&quot;' + uid + '&quot;)">Hapus</button>' +
+        (u.role !== 'admin' ? '<button class="btn btn-danger btn-sm" onclick="deleteUser(&quot;' + uid + '&quot;)">Hapus</button>' : '<span style="font-size:11px;color:var(--muted);padding:6px 8px;">—</span>') +
       '</div></td>' +
     '</tr>';
   }).join('');
@@ -3268,14 +3353,38 @@ function deleteUser(id) {
   if (!id) return;
   const u = DB.users.find(x => x.id === id);
   if (!u) { toast('User tidak ditemukan.', 'error'); return; }
-  if (u.id === DB.session?.id) { toast('Tidak bisa menghapus akun yang sedang login.', 'error'); return; }
-  if (!confirm('Hapus user "' + u.name + '"? Tindakan ini tidak dapat dibatalkan.')) return;
+
+  // Proteksi 1: Tidak bisa hapus diri sendiri
+  if (u.id === DB.session?.id) {
+    toast('Tidak dapat menghapus akun yang sedang digunakan untuk login.', 'error'); return;
+  }
+  // Proteksi 2: Admin tidak bisa hapus sesama admin
+  if (u.role === 'admin' && DB.session?.role === 'admin') {
+    toast('Administrator tidak dapat menghapus sesama administrator.', 'error'); return;
+  }
+  // Proteksi 2b: Jika super-delete diperbolehkan, pastikan min 1 admin tersisa
+  if (u.role === 'admin') {
+    const adminCount = DB.users.filter(x => x.role === 'admin').length;
+    if (adminCount <= 1) {
+      toast('Tidak dapat menghapus admin terakhir. Minimal harus ada 1 admin aktif.', 'error'); return;
+    }
+  }
+  // Proteksi 3: Cek apakah user punya data aktif (PO/SO/DO yang belum selesai)
+  if (u.role === 'customer') {
+    const hasActiveDO = DB.doList.some(d => d.customerId === u.id && d.status !== 'closed');
+    if (hasActiveDO) {
+      toast('Tidak dapat menghapus customer yang masih punya DO aktif. Selesaikan dulu semua pengiriman.', 'error'); return;
+    }
+  }
+
+  if (!confirm('Hapus user "' + u.name + '" (' + u.role + ')? Tindakan ini tidak dapat dibatalkan.')) return;
   DB.users = DB.users.filter(x => x.id !== id);
   lsSave();
-  addAuditLog('Hapus User', 'User ' + u.username + ' dihapus oleh ' + DB.session?.name);
+  addAuditLog('Hapus User', 'User ' + u.username + ' (' + u.role + ') dihapus oleh ' + DB.session?.name);
   toast('User ' + u.name + ' berhasil dihapus.', 'success');
   const tb = $('users-tbody');
   if (tb) tb.innerHTML = renderUserRows(DB.users);
+  updateAdminBadges();
 }
 
 // ── 2. Customer Management ─────────────────────────────────────
@@ -3495,62 +3604,235 @@ const MASTER_DATA = {
   ]
 };
 
+// ── Master Data state ─────────────────────────────────────────
+function getMD() { return JSON.parse(localStorage.getItem('dmk_masterdata') || 'null') || MASTER_DATA; }
+function saveMD(md) { localStorage.setItem('dmk_masterdata', JSON.stringify(md)); }
+
 function renderAdminMasterData() {
-  const savedMD = JSON.parse(localStorage.getItem('dmk_masterdata') || 'null') || MASTER_DATA;
+  const md = getMD();
   return `<div class="page-header"><div class="page-eyebrow">Admin Center</div>
     <h1 class="page-title">Master Data</h1>
-    <p class="page-sub">Kelola data referensi sistem: produk, terminal, kendaraan, dan data lainnya.</p></div>
+    <p class="page-sub">Kelola data referensi sistem: produk, terminal, kendaraan.</p></div>
   <div class="container">
     <div class="tabs">
-      <button class="tab-btn active" onclick="tabSwitch('md','products',this)">Produk</button>
-      <button class="tab-btn" onclick="tabSwitch('md','terminals',this)">Terminal</button>
-      <button class="tab-btn" onclick="tabSwitch('md','vehicles',this)">Armada</button>
+      <button class="tab-btn active" onclick="tabSwitch('md','products',this)">Produk (${md.products.length})</button>
+      <button class="tab-btn" onclick="tabSwitch('md','terminals',this)">Terminal (${md.terminals.length})</button>
+      <button class="tab-btn" onclick="tabSwitch('md','vehicles',this)">Armada (${md.vehicles.length})</button>
     </div>
+    <!-- TAB PRODUK -->
     <div class="tab-panel active" id="md-products">
       <div class="flex-between mb-16">
-        <div style="font-size:13px;color:var(--mid);">${savedMD.products.length} produk terdaftar</div>
-        <button class="btn btn-primary btn-sm" onclick="addMasterItem('product')">+ Tambah Produk</button>
+        <span style="font-size:13px;color:var(--mid);">${md.products.length} produk terdaftar</span>
+        <button class="btn btn-primary btn-sm" onclick="openMDModal('product',null)">+ Tambah Produk</button>
       </div>
       <div class="tbl-wrap"><table class="tbl">
         <thead><tr><th>ID</th><th>Nama Produk</th><th>Satuan</th><th>Harga/Ton (Rp)</th><th>Stok (Ton)</th><th>Terminal</th><th>Aksi</th></tr></thead>
-        <tbody>${savedMD.products.map(p=>`<tr>
-          <td class="col-blue fw-500">${p.id}</td><td class="fw-500">${p.name}</td><td>${p.satuan}</td>
-          <td>Rp ${DB.fmtNum(p.harga)}</td><td>${DB.fmtNum(p.stok)}</td><td>${p.terminal}</td>
-          <td><button class="btn btn-ghost btn-sm">Edit</button></td>
-        </tr>`).join('')}
-        </tbody>
+        <tbody id="md-prod-tbody">${renderMDProductRows(md.products)}</tbody>
       </table></div>
     </div>
+    <!-- TAB TERMINAL -->
     <div class="tab-panel" id="md-terminals">
-      <div class="tbl-wrap"><table class="tbl">
-        <thead><tr><th>ID</th><th>Nama Terminal</th><th>Lokasi</th><th>Kapasitas</th><th>Status</th></tr></thead>
-        <tbody>${savedMD.terminals.map(t=>`<tr>
-          <td class="col-blue fw-500">${t.id}</td><td class="fw-500">${t.name}</td>
-          <td>${t.lokasi}</td><td>${t.kapasitas}</td>
-          <td><span class="badge badge-approved">${t.status}</span></td>
-        </tr>`).join('')}
-        </tbody>
-      </table></div>
-    </div>
-    <div class="tab-panel" id="md-vehicles">
       <div class="flex-between mb-16">
-        <div style="font-size:13px;color:var(--mid);">${savedMD.vehicles.length} armada terdaftar</div>
-        <button class="btn btn-primary btn-sm" onclick="addMasterItem('vehicle')">+ Daftarkan Armada</button>
+        <span style="font-size:13px;color:var(--mid);">${md.terminals.length} terminal terdaftar</span>
+        <button class="btn btn-primary btn-sm" onclick="openMDModal('terminal',null)">+ Tambah Terminal</button>
       </div>
       <div class="tbl-wrap"><table class="tbl">
-        <thead><tr><th>ID</th><th>No. Pol</th><th>Jenis</th><th>Driver</th><th>Telepon</th><th>Status</th><th>Aksi</th></tr></thead>
-        <tbody>${savedMD.vehicles.map(v=>`<tr>
-          <td class="col-blue fw-500">${v.id}</td><td class="fw-500">${v.nopol}</td>
-          <td>${v.jenis}</td><td>${v.driver}</td><td>${v.tlp}</td>
-          <td><span class="badge ${v.status==='Tersedia'?'badge-approved':'badge-transit'}">${v.status}</span></td>
-          <td><button class="btn btn-ghost btn-sm">Edit</button></td>
-        </tr>`).join('')}
-        </tbody>
+        <thead><tr><th>ID</th><th>Nama Terminal</th><th>Lokasi</th><th>Kapasitas</th><th>Status</th><th>Aksi</th></tr></thead>
+        <tbody id="md-term-tbody">${renderMDTerminalRows(md.terminals)}</tbody>
+      </table></div>
+    </div>
+    <!-- TAB ARMADA -->
+    <div class="tab-panel" id="md-vehicles">
+      <div class="flex-between mb-16">
+        <span style="font-size:13px;color:var(--mid);">${md.vehicles.length} armada terdaftar</span>
+        <button class="btn btn-primary btn-sm" onclick="openMDModal('vehicle',null)">+ Daftarkan Armada</button>
+      </div>
+      <div class="tbl-wrap"><table class="tbl">
+        <thead><tr><th>ID</th><th>No. Polisi</th><th>Jenis</th><th>Driver</th><th>Telepon</th><th>Status</th><th>Aksi</th></tr></thead>
+        <tbody id="md-veh-tbody">${renderMDVehicleRows(md.vehicles)}</tbody>
       </table></div>
     </div>
   </div>`;
 }
-function addMasterItem(type) { toast('Fitur tambah '+type+' tersedia — hubungkan ke Supabase untuk persistensi penuh.','info'); }
+
+function renderMDProductRows(rows) {
+  if (!rows.length) return '<tr><td colspan="7">' + emptyState('Belum ada produk.') + '</td></tr>';
+  return rows.map(function(p) {
+    var pid = p.id;
+    return '<tr>' +
+      '<td class="col-blue fw-500">' + pid + '</td>' +
+      '<td class="fw-500">' + p.name + '</td>' +
+      '<td>' + p.satuan + '</td>' +
+      '<td>Rp ' + DB.fmtNum(p.harga) + '</td>' +
+      '<td>' + DB.fmtNum(p.stok) + '</td>' +
+      '<td>' + p.terminal + '</td>' +
+      '<td><div class="tbl-actions">' +
+        '<button class="btn btn-ghost btn-sm" onclick="openMDModal(&quot;product&quot;,&quot;' + pid + '&quot;)">Edit</button>' +
+        '<button class="btn btn-danger btn-sm" onclick="deleteMDItem(&quot;product&quot;,&quot;' + pid + '&quot;)">Hapus</button>' +
+      '</div></td>' +
+    '</tr>';
+  }).join('');
+}
+function renderMDTerminalRows(rows) {
+  if (!rows.length) return '<tr><td colspan="6">' + emptyState('Belum ada terminal.') + '</td></tr>';
+  return rows.map(function(t) {
+    var tid = t.id;
+    var stsCls = t.status === 'Aktif' ? 'badge-approved' : 'badge-pending';
+    return '<tr>' +
+      '<td class="col-blue fw-500">' + tid + '</td>' +
+      '<td class="fw-500">' + t.name + '</td>' +
+      '<td>' + t.lokasi + '</td>' +
+      '<td>' + t.kapasitas + '</td>' +
+      '<td><span class="badge ' + stsCls + '">' + t.status + '</span></td>' +
+      '<td><div class="tbl-actions">' +
+        '<button class="btn btn-ghost btn-sm" onclick="openMDModal(&quot;terminal&quot;,&quot;' + tid + '&quot;)">Edit</button>' +
+        '<button class="btn btn-danger btn-sm" onclick="deleteMDItem(&quot;terminal&quot;,&quot;' + tid + '&quot;)">Hapus</button>' +
+      '</div></td>' +
+    '</tr>';
+  }).join('');
+}
+function renderMDVehicleRows(rows) {
+  if (!rows.length) return '<tr><td colspan="7">' + emptyState('Belum ada armada.') + '</td></tr>';
+  return rows.map(function(v) {
+    var vid = v.id;
+    var stsCls = v.status === 'Tersedia' ? 'badge-approved' : 'badge-transit';
+    return '<tr>' +
+      '<td class="col-blue fw-500">' + vid + '</td>' +
+      '<td class="fw-500">' + v.nopol + '</td>' +
+      '<td>' + v.jenis + '</td>' +
+      '<td>' + v.driver + '</td>' +
+      '<td>' + v.tlp + '</td>' +
+      '<td><span class="badge ' + stsCls + '">' + v.status + '</span></td>' +
+      '<td><div class="tbl-actions">' +
+        '<button class="btn btn-ghost btn-sm" onclick="openMDModal(&quot;vehicle&quot;,&quot;' + vid + '&quot;)">Edit</button>' +
+        '<button class="btn btn-danger btn-sm" onclick="deleteMDItem(&quot;vehicle&quot;,&quot;' + vid + '&quot;)">Hapus</button>' +
+      '</div></td>' +
+    '</tr>';
+  }).join('');
+}
+
+let _mdType = null; let _mdId = null;
+function openMDModal(type, id) {
+  _mdType = type; _mdId = id;
+  const md = getMD();
+  const item = id ? (md[type==='product'?'products':type==='terminal'?'terminals':'vehicles'].find(x=>x.id===id)) : null;
+
+  const titles = { product: id ? 'Edit Produk' : 'Tambah Produk', terminal: id ? 'Edit Terminal' : 'Tambah Terminal', vehicle: id ? 'Edit Armada' : 'Daftarkan Armada' };
+  $('md-modal-title').textContent = titles[type];
+
+  const forms = {
+    product: `
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Nama Produk <span>*</span></label>
+          <input class="form-input" id="md-f-name" value="${item?.name||''}"/></div>
+        <div class="form-group"><label class="form-label">Satuan</label>
+          <input class="form-input" id="md-f-satuan" value="${item?.satuan||'Ton'}"/></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Harga per Ton (Rp)</label>
+          <input class="form-input" type="number" id="md-f-harga" value="${item?.harga||''}"/></div>
+        <div class="form-group"><label class="form-label">Stok (Ton)</label>
+          <input class="form-input" type="number" id="md-f-stok" value="${item?.stok||''}"/></div>
+      </div>
+      <div class="form-group"><label class="form-label">Terminal</label>
+        <select class="form-select" id="md-f-terminal">
+          ${getMD().terminals.map(t=>'<option value="'+t.name+'"'+(item?.terminal===t.name?' selected':'')+'>'+t.name+'</option>').join('')}
+        </select></div>`,
+    terminal: `
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Nama Terminal <span>*</span></label>
+          <input class="form-input" id="md-f-name" value="${item?.name||''}"/></div>
+        <div class="form-group"><label class="form-label">Kapasitas</label>
+          <input class="form-input" id="md-f-kapasitas" value="${item?.kapasitas||''}"/></div>
+      </div>
+      <div class="form-group"><label class="form-label">Lokasi</label>
+        <input class="form-input" id="md-f-lokasi" value="${item?.lokasi||''}"/></div>
+      <div class="form-group"><label class="form-label">Status</label>
+        <select class="form-select" id="md-f-status">
+          <option value="Aktif" ${(item?.status||'Aktif')==='Aktif'?'selected':''}>Aktif</option>
+          <option value="Tidak Aktif" ${item?.status==='Tidak Aktif'?'selected':''}>Tidak Aktif</option>
+          <option value="Maintenance" ${item?.status==='Maintenance'?'selected':''}>Maintenance</option>
+        </select></div>`,
+    vehicle: `
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">No. Polisi <span>*</span></label>
+          <input class="form-input" id="md-f-nopol" value="${item?.nopol||''}" placeholder="Cth: B 1234 XY"/></div>
+        <div class="form-group"><label class="form-label">Jenis Kendaraan</label>
+          <select class="form-select" id="md-f-jenis">
+            <option value="Tangki 200T" ${(item?.jenis||'')==='Tangki 200T'?'selected':''}>Tangki 200T</option>
+            <option value="Tangki 150T" ${item?.jenis==='Tangki 150T'?'selected':''}>Tangki 150T</option>
+            <option value="Tangki 100T" ${item?.jenis==='Tangki 100T'?'selected':''}>Tangki 100T</option>
+            <option value="Truk Drum" ${item?.jenis==='Truk Drum'?'selected':''}>Truk Drum</option>
+          </select></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Nama Driver <span>*</span></label>
+          <input class="form-input" id="md-f-driver" value="${item?.driver||''}"/></div>
+        <div class="form-group"><label class="form-label">No. Telepon Driver</label>
+          <input class="form-input" id="md-f-tlp" value="${item?.tlp||''}" placeholder="08xx-xxxx-xxxx"/></div>
+      </div>
+      <div class="form-group"><label class="form-label">Status</label>
+        <select class="form-select" id="md-f-status">
+          <option value="Tersedia" ${(item?.status||'Tersedia')==='Tersedia'?'selected':''}>Tersedia</option>
+          <option value="Dikirim" ${item?.status==='Dikirim'?'selected':''}>Dikirim</option>
+          <option value="Maintenance" ${item?.status==='Maintenance'?'selected':''}>Maintenance</option>
+          <option value="Tidak Aktif" ${item?.status==='Tidak Aktif'?'selected':''}>Tidak Aktif</option>
+        </select></div>`
+  };
+  $('md-modal-form').innerHTML = forms[type] || '';
+  openModal('modal-masterdata');
+}
+
+function saveMDItem() {
+  const md = getMD();
+  const name = $('md-f-name')?.value?.trim();
+  if (!name) { toast('Nama wajib diisi.', 'error'); return; }
+
+  if (_mdType === 'product') {
+    const item = { id: _mdId || 'P' + String(md.products.length+1).padStart(3,'0'), name, satuan: $('md-f-satuan')?.value||'Ton', harga: Number($('md-f-harga')?.value)||0, stok: Number($('md-f-stok')?.value)||0, terminal: $('md-f-terminal')?.value||'' };
+    if (_mdId) { const i=md.products.findIndex(x=>x.id===_mdId); if(i>=0) md.products[i]=item; }
+    else md.products.push(item);
+    saveMD(md); closeModal('modal-masterdata');
+    toast('Produk berhasil disimpan.','success');
+    const tb=$('md-prod-tbody'); if(tb) tb.innerHTML=renderMDProductRows(md.products);
+
+  } else if (_mdType === 'terminal') {
+    const item = { id: _mdId || 'T' + String(md.terminals.length+1).padStart(3,'0'), name, lokasi: $('md-f-lokasi')?.value||'', kapasitas: $('md-f-kapasitas')?.value||'', status: $('md-f-status')?.value||'Aktif' };
+    if (_mdId) { const i=md.terminals.findIndex(x=>x.id===_mdId); if(i>=0) md.terminals[i]=item; }
+    else md.terminals.push(item);
+    saveMD(md); closeModal('modal-masterdata');
+    toast('Terminal berhasil disimpan.','success');
+    const tb=$('md-term-tbody'); if(tb) tb.innerHTML=renderMDTerminalRows(md.terminals);
+
+  } else if (_mdType === 'vehicle') {
+    const nopol = $('md-f-nopol')?.value?.trim();
+    if (!nopol) { toast('No. polisi wajib diisi.', 'error'); return; }
+    const driverName = $('md-f-driver')?.value?.trim() || name;
+    const item = { id: _mdId || 'V' + String(md.vehicles.length+1).padStart(3,'0'), nopol, jenis: $('md-f-jenis')?.value||'Tangki 200T', driver: driverName, tlp: $('md-f-tlp')?.value||'', status: $('md-f-status')?.value||'Tersedia' };
+    if (_mdId) { const i=md.vehicles.findIndex(x=>x.id===_mdId); if(i>=0) md.vehicles[i]=item; }
+    else md.vehicles.push(item);
+    saveMD(md); closeModal('modal-masterdata');
+    toast('Armada berhasil disimpan.','success');
+    const tb=$('md-veh-tbody'); if(tb) tb.innerHTML=renderMDVehicleRows(md.vehicles);
+  }
+  addAuditLog('Master Data', (_mdId?'Edit ':'Tambah ') + _mdType + ' ' + name);
+}
+
+function deleteMDItem(type, id) {
+  const md = getMD();
+  const key = type==='product'?'products':type==='terminal'?'terminals':'vehicles';
+  const item = md[key].find(x=>x.id===id);
+  if (!item) return;
+  if (!confirm('Hapus ' + type + ' "' + (item.name||item.nopol) + '"?')) return;
+  md[key] = md[key].filter(x=>x.id!==id);
+  saveMD(md);
+  addAuditLog('Master Data', 'Hapus ' + type + ' ' + (item.name||item.nopol));
+  toast((item.name||item.nopol) + ' berhasil dihapus.','success');
+  // Re-render table
+  if (type==='product') { const tb=$('md-prod-tbody'); if(tb) tb.innerHTML=renderMDProductRows(md.products); }
+  else if (type==='terminal') { const tb=$('md-term-tbody'); if(tb) tb.innerHTML=renderMDTerminalRows(md.terminals); }
+  else { const tb=$('md-veh-tbody'); if(tb) tb.innerHTML=renderMDVehicleRows(md.vehicles); }
+}
 
 // ── 7. Integration Settings ────────────────────────────────────
 function renderAdminIntegration() {
@@ -3652,9 +3934,52 @@ function renderAdminSysSet() {
       <div class="form-row">
         <div class="form-group"><label class="form-label">Timezone</label>
           <select class="form-select" id="sys-tz">
-            <option value="WIB" ${(cfg.tz||'WIB')==='WIB'?'selected':''}>WIB (UTC+7)</option>
-            <option value="WITA" ${cfg.tz==='WITA'?'selected':''}>WITA (UTC+8)</option>
-            <option value="WIT" ${cfg.tz==='WIT'?'selected':''}>WIT (UTC+9)</option>
+            <optgroup label="── Indonesia ──">
+              <option value="WIB" ${(cfg.tz||'WIB')==='WIB'?'selected':''}>WIB — Waktu Indonesia Barat (UTC+7)</option>
+              <option value="WITA" ${cfg.tz==='WITA'?'selected':''}>WITA — Waktu Indonesia Tengah (UTC+8)</option>
+              <option value="WIT" ${cfg.tz==='WIT'?'selected':''}>WIT — Waktu Indonesia Timur (UTC+9)</option>
+            </optgroup>
+            <optgroup label="── Asia Tenggara ──">
+              <option value="Asia/Singapore" ${cfg.tz==='Asia/Singapore'?'selected':''}>Singapura / Malaysia (UTC+8)</option>
+              <option value="Asia/Bangkok" ${cfg.tz==='Asia/Bangkok'?'selected':''}>Bangkok / Vietnam / Jakarta (UTC+7)</option>
+              <option value="Asia/Manila" ${cfg.tz==='Asia/Manila'?'selected':''}>Manila / Filipina (UTC+8)</option>
+            </optgroup>
+            <optgroup label="── Asia Timur ──">
+              <option value="Asia/Shanghai" ${cfg.tz==='Asia/Shanghai'?'selected':''}>Shanghai / Tiongkok (UTC+8)</option>
+              <option value="Asia/Tokyo" ${cfg.tz==='Asia/Tokyo'?'selected':''}>Tokyo / Jepang (UTC+9)</option>
+              <option value="Asia/Seoul" ${cfg.tz==='Asia/Seoul'?'selected':''}>Seoul / Korea (UTC+9)</option>
+            </optgroup>
+            <optgroup label="── Asia Selatan ──">
+              <option value="Asia/Kolkata" ${cfg.tz==='Asia/Kolkata'?'selected':''}>India / Kolkata (UTC+5:30)</option>
+              <option value="Asia/Karachi" ${cfg.tz==='Asia/Karachi'?'selected':''}>Pakistan / Karachi (UTC+5)</option>
+              <option value="Asia/Dhaka" ${cfg.tz==='Asia/Dhaka'?'selected':''}>Bangladesh / Dhaka (UTC+6)</option>
+            </optgroup>
+            <optgroup label="── Timur Tengah ──">
+              <option value="Asia/Dubai" ${cfg.tz==='Asia/Dubai'?'selected':''}>Dubai / UAE (UTC+4)</option>
+              <option value="Asia/Riyadh" ${cfg.tz==='Asia/Riyadh'?'selected':''}>Riyadh / Arab Saudi (UTC+3)</option>
+            </optgroup>
+            <optgroup label="── Australia & Pasifik ──">
+              <option value="Australia/Sydney" ${cfg.tz==='Australia/Sydney'?'selected':''}>Sydney / AEDT (UTC+10/11)</option>
+              <option value="Australia/Perth" ${cfg.tz==='Australia/Perth'?'selected':''}>Perth / AWST (UTC+8)</option>
+              <option value="Pacific/Auckland" ${cfg.tz==='Pacific/Auckland'?'selected':''}>Auckland / Selandia Baru (UTC+12/13)</option>
+            </optgroup>
+            <optgroup label="── Eropa ──">
+              <option value="Europe/London" ${cfg.tz==='Europe/London'?'selected':''}>London / GMT-BST (UTC+0/+1)</option>
+              <option value="Europe/Paris" ${cfg.tz==='Europe/Paris'?'selected':''}>Paris / Amsterdam / CET (UTC+1/+2)</option>
+              <option value="Europe/Moscow" ${cfg.tz==='Europe/Moscow'?'selected':''}>Moskow / MSK (UTC+3)</option>
+            </optgroup>
+            <optgroup label="── Amerika ──">
+              <option value="America/New_York" ${cfg.tz==='America/New_York'?'selected':''}>New York / EST (UTC-5/-4)</option>
+              <option value="America/Chicago" ${cfg.tz==='America/Chicago'?'selected':''}>Chicago / CST (UTC-6/-5)</option>
+              <option value="America/Los_Angeles" ${cfg.tz==='America/Los_Angeles'?'selected':''}>Los Angeles / PST (UTC-8/-7)</option>
+              <option value="America/Sao_Paulo" ${cfg.tz==='America/Sao_Paulo'?'selected':''}>São Paulo / BRT (UTC-3)</option>
+            </optgroup>
+            <optgroup label="── Afrika ──">
+              <option value="Africa/Cairo" ${cfg.tz==='Africa/Cairo'?'selected':''}>Kairo / Mesir (UTC+2)</option>
+              <option value="Africa/Nairobi" ${cfg.tz==='Africa/Nairobi'?'selected':''}>Nairobi / EAT (UTC+3)</option>
+              <option value="Africa/Johannesburg" ${cfg.tz==='Africa/Johannesburg'?'selected':''}>Johannesburg / SAST (UTC+2)</option>
+            </optgroup>
+            <option value="UTC" ${cfg.tz==='UTC'?'selected':''}>UTC — Universal Time (UTC+0)</option>
           </select></div>
         <div class="form-group"><label class="form-label">Format Tanggal</label>
           <select class="form-select" id="sys-datefmt">
@@ -3840,6 +4165,199 @@ function filterLogs() {
 
 // Audit log calls embedded directly in each action function above
 // (patch wrappers removed to prevent double-execution)
+
+
+// ════════════════════════════════════════════════════════════════
+//  NOTIFICATION PANEL FUNCTIONS
+// ════════════════════════════════════════════════════════════════
+
+let _notifRead = new Set(JSON.parse(localStorage.getItem('dmk_notif_read') || '[]'));
+
+
+function buildNotifItems() {
+  const items = [];
+
+  // SO pending review
+  DB.so.filter(s => s.status === 'pending').forEach(s => {
+    items.push({
+      key:   'so_' + s.id,
+      icon:  '📋',
+      cls:   'notif-icon-so',
+      title: 'SO Baru Menunggu Review',
+      desc:  s.id + ' · ' + s.customerName + ' · ' + DB.fmtNum(s.tonaseTotal) + ' Ton',
+      time:  DB.fmt(s.createdAt),
+      action: function() { adminNav('so'); closeNotifPanel(); }
+    });
+  });
+
+  // DR pending (belum ada DO)
+  DB.dr.filter(d => d.status === 'pending').forEach(d => {
+    items.push({
+      key:   'dr_' + d.id,
+      icon:  '🚚',
+      cls:   'notif-icon-dr',
+      title: 'Permintaan Pengiriman Baru',
+      desc:  d.id + ' · ' + d.customerName + ' · ' + DB.fmtNum(d.tonase) + ' Ton → ' + d.tujuan,
+      time:  DB.fmt(d.tanggalKirim),
+      action: function() { adminNav('delivery'); closeNotifPanel(); }
+    });
+  });
+
+  // BAPB pending verifikasi TTD
+  DB.receipts.filter(r => r.verifyStatus === 'pending').forEach(r => {
+    items.push({
+      key:   'rcp_' + r.id,
+      icon:  '✍️',
+      cls:   'notif-icon-ttd',
+      title: 'BAPB Menunggu Verifikasi TTD',
+      desc:  r.id + ' · ' + r.customerName + ' · Timbangan: ' + DB.fmtNum(r.timbangan) + ' Ton',
+      time:  DB.fmt(r.tanggal),
+      action: function() { adminNav('signature'); closeNotifPanel(); }
+    });
+  });
+
+  // PO baru yang belum dibuat SO-nya
+  DB.po.filter(p => p.status === 'pending').forEach(p => {
+    items.push({
+      key:   'po_' + p.id,
+      icon:  '📄',
+      cls:   'notif-icon-po',
+      title: 'PO Baru Masuk — Perlu Buat SO',
+      desc:  p.id + ' · ' + p.customerName + ' · ' + p.product + ' ' + DB.fmtNum(p.tonase) + ' Ton',
+      time:  DB.fmt(p.tanggalPO),
+      action: function() { adminNav('so'); closeNotifPanel(); }
+    });
+  });
+
+  if (!items.length) {
+    return '<div class="notif-empty">✅ Semua tugas sudah selesai.<br><span style="font-size:11px;">Tidak ada notifikasi baru.</span></div>';
+  }
+
+  return items.map(function(item) {
+    const isUnread = !_notifRead.has(item.key);
+    const fnName = 'notifClick_' + item.key.replace(/[^a-zA-Z0-9]/g,'_');
+    window[fnName] = function() { markNotifRead(item.key); item.action(); };
+    return '<div class="notif-item ' + (isUnread ? 'unread' : '') + '" onclick="' + fnName + '()">' +
+      '<div class="notif-icon ' + item.cls + '">' + item.icon + '</div>' +
+      '<div class="notif-content">' +
+        '<div class="notif-title">' + item.title + '</div>' +
+        '<div class="notif-desc">' + item.desc + '</div>' +
+        '<div class="notif-time">' + item.time + '</div>' +
+      '</div>' +
+      (isUnread ? '<div style="width:8px;height:8px;border-radius:50%;background:var(--blue);flex-shrink:0;margin-top:4px;"></div>' : '') +
+    '</div>';
+  }).join('');
+}
+
+function markNotifRead(key) {
+  _notifRead.add(key);
+  localStorage.setItem('dmk_notif_read', JSON.stringify([..._notifRead]));
+  updateNotifBadgeCount();
+}
+
+function markAllNotifRead() {
+  const items = [
+    ...DB.so.filter(s=>s.status==='pending').map(s=>'so_'+s.id),
+    ...DB.dr.filter(d=>d.status==='pending').map(d=>'dr_'+d.id),
+    ...DB.receipts.filter(r=>r.verifyStatus==='pending').map(r=>'rcp_'+r.id),
+    ...DB.po.filter(p=>p.status==='pending').map(p=>'po_'+p.id),
+  ];
+  items.forEach(k => _notifRead.add(k));
+  localStorage.setItem('dmk_notif_read', JSON.stringify([..._notifRead]));
+  updateNotifBadgeCount();
+  const body = $('notif-panel-body');
+  if (body) body.innerHTML = buildNotifItems();
+}
+
+function updateNotifBadgeCount() {
+  const total =
+    DB.so.filter(s => s.status === 'pending' && !_notifRead.has('so_'+s.id)).length +
+    DB.dr.filter(d => d.status === 'pending' && !_notifRead.has('dr_'+d.id)).length +
+    DB.receipts.filter(r => r.verifyStatus === 'pending' && !_notifRead.has('rcp_'+r.id)).length +
+    DB.po.filter(p => p.status === 'pending' && !_notifRead.has('po_'+p.id)).length;
+  const nc = $('admin-notif-count');
+  if (nc) { nc.textContent = total; nc.style.display = total ? 'flex' : 'none'; }
+}
+
+
+// ════════════════════════════════════════
+//  NOTIFICATION PANEL
+// ════════════════════════════════════════
+function openNotifPanel() {
+  const panel = $('notif-panel');
+  const backdrop = $('notif-backdrop');
+  if (!panel) return;
+
+  // Build notification list
+  const items = [];
+
+  // SO pending review
+  DB.so.filter(s => s.status === 'pending').forEach(s => {
+    items.push({
+      type: 'so', dot: 'notif-dot-so',
+      title: 'SO Menunggu Verifikasi: ' + s.id,
+      sub: s.customerName + ' · ' + s.product + ' · ' + DB.fmtNum(s.tonaseTotal) + ' Ton',
+      time: 'Dibuat: ' + DB.fmt(s.createdAt),
+      action: function() { closeNotifPanel(); adminNav('so'); }
+    });
+  });
+
+  // DR pending DO
+  DB.dr.filter(d => d.status === 'pending').forEach(d => {
+    items.push({
+      type: 'do', dot: 'notif-dot-do',
+      title: 'Permintaan Pengiriman: ' + d.id,
+      sub: d.customerName + ' · ' + DB.fmtNum(d.tonase) + ' Ton → ' + d.tujuan,
+      time: 'Kirim: ' + DB.fmt(d.tanggalKirim),
+      action: function() { closeNotifPanel(); adminNav('delivery'); }
+    });
+  });
+
+  // BAPB pending verifikasi TTD
+  DB.receipts.filter(r => r.verifyStatus === 'pending').forEach(r => {
+    items.push({
+      type: 'ttd', dot: 'notif-dot-ttd',
+      title: 'BAPB Menunggu Verifikasi TTD: ' + r.id,
+      sub: r.customerName + ' · ' + r.namaPenerima + ' · ' + DB.fmtNum(r.timbangan) + ' Ton',
+      time: 'Diterima: ' + DB.fmt(r.tanggal),
+      action: function() { closeNotifPanel(); adminNav('signature'); }
+    });
+  });
+
+  // Render
+  const listEl = $('notif-list-content');
+  if (listEl) {
+    if (items.length === 0) {
+      listEl.innerHTML = '<div class="notif-empty">✓ Tidak ada notifikasi baru.<br>Semua permintaan sudah diproses.</div>';
+    } else {
+      listEl.innerHTML = items.map(function(item, idx) {
+        return '<div class="notif-item" id="notif-item-' + idx + '">' +
+          '<div class="notif-dot ' + item.dot + '"></div>' +
+          '<div class="notif-item-body">' +
+            '<div class="notif-item-title">' + item.title + '</div>' +
+            '<div class="notif-item-sub">' + item.sub + '</div>' +
+            '<div class="notif-item-time">' + item.time + '</div>' +
+          '</div>' +
+        '</div>';
+      }).join('');
+      // Bind click events after render
+      items.forEach(function(item, idx) {
+        var el = $('notif-item-' + idx);
+        if (el) el.addEventListener('click', item.action);
+      });
+    }
+  }
+
+  panel.classList.add('open');
+  if (backdrop) backdrop.style.display = 'block';
+}
+
+function closeNotifPanel() {
+  const panel = $('notif-panel');
+  const backdrop = $('notif-backdrop');
+  if (panel) panel.classList.remove('open');
+  if (backdrop) backdrop.style.display = 'none';
+}
 
 </script>
 </body>
