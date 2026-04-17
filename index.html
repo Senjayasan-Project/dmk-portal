@@ -1841,7 +1841,9 @@ const DB = {
   // create PO
   createPO(data) {
     const id = this.nextId('PO');
-    const po = { id, ...data, status: 'pending', createdAt: this.today(), customerId: this.session.id, customerName: this.session.name };
+    // noPO: gunakan data.noPO jika ada (dari form), atau gunakan id sebagai fallback
+    const noPO = data.noPO || id;
+    const po = { id, noPO, ...data, status: 'pending', createdAt: this.today(), customerId: this.session.id, customerName: this.session.name };
     this.po.push(po);
     return po;
   },
@@ -1857,7 +1859,7 @@ const DB = {
     const po = this.po.find(p => p.id === poId);
     if (!po) return null;
     const id = this.nextId('SO');
-    const so = { id, poId, customerId: po.customerId, customerName: po.customerName, product: po.product, tonaseTotal: po.tonase, tonaseSisa: po.tonase, harga: po.harga, lokasi: po.lokasi, status: 'pending', createdAt: this.today() };
+    const so = { id, noSO: id, poId, customerId: po.customerId, customerName: po.customerName, product: po.product, tonaseTotal: po.tonase, tonaseSisa: po.tonase, harga: po.harga, lokasi: po.lokasi, status: 'pending', createdAt: this.today() };
     this.so.push(so);
     po.soId = id; po.status = 'so-created';
     return so;
@@ -1886,7 +1888,7 @@ const DB = {
   createDR(data) {
     const id = this.nextId('DR');
     const so = this.so.find(s => s.id === data.soId);
-    const dr = { id, ...data, status: 'pending', createdAt: this.today(), customerId: this.session.id, customerName: this.session.name, product: so?.product, soTonaseTotal: so?.tonaseTotal };
+    const dr = { id, noDR: id, ...data, status: 'pending', createdAt: this.today(), customerId: this.session.id, customerName: this.session.name, product: so?.product, soTonaseTotal: so?.tonaseTotal };
     this.dr.push(dr);
     return dr;
   },
@@ -1901,7 +1903,7 @@ const DB = {
     const id = this.nextId('DO');
     const dr = this.dr.find(d => d.id === data.drId);
     const so = this.so.find(s => s.id === dr?.soId);
-    const doObj = { id, ...data, drId: dr?.id, soId: dr?.soId, customerId: dr?.customerId, customerName: dr?.customerName, product: dr?.product, status: 'posted', postedAt: this.today(), trackStatus: 'loading' };
+    const doObj = { id, noDO: id, ...data, drId: dr?.id, soId: dr?.soId, customerId: dr?.customerId, customerName: dr?.customerName, product: dr?.product, status: 'posted', postedAt: this.today(), trackStatus: 'loading' };
     this.doList.push(doObj);
     if (dr) dr.status = 'do-created'; dr.doId = id;
     if (so) { so.tonaseSisa = Math.max(0, (so.tonaseSisa||so.tonaseTotal) - Number(data.tonase)); }
@@ -1923,7 +1925,7 @@ const DB = {
   createReceipt(data, sigDataUrl) {
     const id = this.nextId('RCP');
     const invId = this.nextId('INV');
-    const receipt = { id, invId, ...data, sigDataUrl, createdAt: this.today(), verifyStatus: 'pending', customerId: this.session.id, customerName: this.session.name };
+    const receipt = { id, noReceipt: id, invId, ...data, sigDataUrl, createdAt: this.today(), verifyStatus: 'pending', customerId: this.session.id, customerName: this.session.name };
     this.receipts.push(receipt);
     const d = this.doList.find(x => x.id === data.doId);
     if (d) { d.status = 'delivered'; d.trackStatus = 'delivered'; d.receiptId = id; }
@@ -2359,7 +2361,7 @@ function renderCustDash() {
   const recentPOs = pos.slice(-3).reverse();
   $('c-dash-po').innerHTML = recentPOs.length ? recentPOs.map(po => `
     <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--navy-border);">
-      <div><div class="fw-500 fs-13">${po.id}</div><div class="col-muted" style="font-size:11px;">${po.product} · ${DB.fmtNum(po.tonase)} Ton</div></div>
+      <div><div class="fw-500 fs-13">${po.noPO || po.id}</div><div class="col-muted" style="font-size:11px;">${po.product} · ${DB.fmtNum(po.tonase)} Ton</div></div>
       ${badge(po.status)}
     </div>`).join('') : emptyState('Belum ada PO');
 
@@ -2367,7 +2369,7 @@ function renderCustDash() {
   const activeDOs = dos.filter(d => !['closed'].includes(d.status)).slice(-3).reverse();
   $('c-dash-do').innerHTML = activeDOs.length ? activeDOs.map(d => `
     <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--navy-border);">
-      <div><div class="fw-500 fs-13">${d.id}</div><div class="col-muted" style="font-size:11px;">${d.tujuan} · ${DB.fmtNum(d.tonase)} Ton</div></div>
+      <div><div class="fw-500 fs-13">${d.noDO || d.id}</div><div class="col-muted" style="font-size:11px;">${d.tujuan} · ${DB.fmtNum(d.tonase)} Ton</div></div>
       ${badge(d.status)}
     </div>`).join('') : emptyState('Belum ada DO aktif');
 }
@@ -2377,7 +2379,7 @@ function renderPOList() {
   const rows = DB.myPOs().slice().reverse();
   $('c-po-tbody').innerHTML = rows.length ? rows.map(po => `
     <tr>
-      <td class="col-blue fw-500">${po.id}</td>
+      <td class="col-blue fw-500">${po.noPO || po.id}</td>
       <td>${DB.fmt(po.tanggalPO)}</td>
       <td>${po.product}</td>
       <td>${DB.fmtNum(po.tonase)} Ton</td>
@@ -2454,30 +2456,37 @@ function refillPO(id) {
 // ── SO (customer view) ───────────────────────
 function renderSOList() {
   const rows = DB.mySOs().slice().reverse();
-  $('c-so-tbody').innerHTML = rows.length ? rows.map(so => `
-    <tr>
-      <td class="col-blue fw-500">${so.id}</td>
-      <td>${so.poId}</td>
+  $('c-so-tbody').innerHTML = rows.length ? rows.map(so => {
+    // Cari no_po referensi dari DB lokal
+    const po = DB.po.find(p => p.id === so.poId);
+    const refPO = po ? (po.noPO || po.id) : (so.poId || '—');
+    return `<tr>
+      <td class="col-blue fw-500">${so.noSO || so.id}</td>
+      <td>${refPO}</td>
       <td>${so.product}</td>
       <td>${DB.fmtNum(so.tonaseTotal)} Ton</td>
       <td>${DB.fmtNum(so.tonaseSisa||so.tonaseTotal)} Ton</td>
       <td>${badge(so.status)}</td>
       <td class="col-muted fs-12">${so.catatan||'—'}</td>
-    </tr>`).join('') : `<tr><td colspan="7">${emptyState('Belum ada Sales Order.')}</td></tr>`;
+    </tr>`;
+  }).join('') : `<tr><td colspan="7">${emptyState('Belum ada Sales Order.')}</td></tr>`;
 }
 
 // ── Delivery Request ─────────────────────────
 function renderDRList() {
   const rows = DB.myDRs().slice().reverse();
-  $('c-dr-tbody').innerHTML = rows.length ? rows.map(dr => `
-    <tr>
-      <td class="col-blue fw-500">${dr.id}</td>
-      <td>${dr.soId}</td>
+  $('c-dr-tbody').innerHTML = rows.length ? rows.map(dr => {
+    const so = DB.so.find(s => s.id === dr.soId);
+    const refSO = so ? (so.noSO || so.id) : (dr.soId || '—');
+    return `<tr>
+      <td class="col-blue fw-500">${dr.noDR || dr.id}</td>
+      <td>${refSO}</td>
       <td>${DB.fmt(dr.tanggalKirim)}</td>
       <td>${DB.fmtNum(dr.tonase)} Ton</td>
       <td>${dr.tujuan}</td>
       <td>${badge(dr.status)}</td>
-    </tr>`).join('') : `<tr><td colspan="6">${emptyState('Belum ada permintaan pengiriman.')}</td></tr>`;
+    </tr>`;
+  }).join('') : `<tr><td colspan="6">${emptyState('Belum ada permintaan pengiriman.')}</td></tr>`;
 }
 
 function onDRsoChange() {
@@ -2570,7 +2579,7 @@ function renderCustTracking() {
     <div class="card mb-16">
       <div class="flex-between mb-16">
         <div>
-          <span class="col-blue fw-500">${d.id}</span>
+          <span class="col-blue fw-500">${d.noDO || d.id}</span>
           <span class="col-muted fs-12" style="margin-left:12px;">${d.customerName}</span>
         </div>
         ${badge(d.status)}
@@ -2605,15 +2614,18 @@ function trackingBar(status) {
 // ── Receipt ──────────────────────────────────
 function renderReceiptList() {
   const rows = DB.myReceipts().slice().reverse();
-  $('c-rcp-tbody').innerHTML = rows.length ? rows.map(r => `
-    <tr>
-      <td class="col-blue fw-500">${r.id}</td>
-      <td>${r.doId}</td>
+  $('c-rcp-tbody').innerHTML = rows.length ? rows.map(r => {
+    const doObj = DB.doList.find(d => d.id === r.doId);
+    const refDO = doObj ? (doObj.noDO || doObj.id) : (r.doId || '—');
+    return `<tr>
+      <td class="col-blue fw-500">${r.noReceipt || r.id}</td>
+      <td>${refDO}</td>
       <td>${DB.fmt(r.tanggal)}</td>
       <td>${r.namaPenerima}</td>
       <td>${DB.fmtNum(r.timbangan)} Ton</td>
       <td>${badge(r.verifyStatus)}</td>
-    </tr>`).join('') : `<tr><td colspan="6">${emptyState('Belum ada data penerimaan.')}</td></tr>`;
+    </tr>`;
+  }).join('') : `<tr><td colspan="6">${emptyState('Belum ada data penerimaan.')}</td></tr>`;
 }
 
 function openReceiptForm() {
@@ -2875,7 +2887,7 @@ function renderAdminDash() {
   $('a-dash-so').innerHTML = pendingSOs.length ? pendingSOs.map(s => `
     <div class="flex-between" style="padding:10px 0;border-bottom:1px solid var(--navy-border);">
       <div>
-        <span class="col-blue fw-500">${s.id}</span>
+        <span class="col-blue fw-500">${s.noSO || s.id}</span>
         <span class="col-muted fs-12" style="margin-left:8px;">${s.customerName}</span>
         <div class="col-muted" style="font-size:11px;">${s.product} · ${DB.fmtNum(s.tonaseTotal)} Ton</div>
       </div>
@@ -2887,7 +2899,7 @@ function renderAdminDash() {
   $('a-dash-verify').innerHTML = pendingRCP.length ? pendingRCP.map(r => `
     <div class="flex-between" style="padding:10px 0;border-bottom:1px solid var(--navy-border);">
       <div>
-        <span class="col-blue fw-500">${r.id}</span>
+        <span class="col-blue fw-500">${r.noReceipt || r.id}</span>
         <span class="col-muted fs-12" style="margin-left:8px;">${r.customerName}</span>
         <div class="col-muted" style="font-size:11px;">${r.doId} · ${DB.fmtNum(r.timbangan)} Ton</div>
       </div>
@@ -2898,10 +2910,15 @@ function renderAdminDash() {
 // ── admin SO ─────────────────────────────────
 function renderAdminSO() {
   const pending = DB.so.filter(s => s.status === 'pending');
+  const _resolveRefPO = (soObj) => {
+    const po = DB.po.find(p => p.id === soObj.poId);
+    return po ? (po.noPO || po.id) : (soObj.poId || '—');
+  };
+
   $('a-so-pending-tbody').innerHTML = pending.length ? pending.map(s => `
     <tr>
-      <td class="col-blue fw-500">${s.id}</td>
-      <td>${s.poId}</td>
+      <td class="col-blue fw-500">${s.noSO || s.id}</td>
+      <td>${_resolveRefPO(s)}</td>
       <td>${s.customerName}</td>
       <td>${s.product}</td>
       <td>${DB.fmtNum(s.tonaseTotal)} Ton</td>
@@ -2911,8 +2928,8 @@ function renderAdminSO() {
 
   $('a-so-all-tbody').innerHTML = DB.so.slice().reverse().map(s => `
     <tr>
-      <td class="col-blue fw-500">${s.id}</td>
-      <td>${s.poId}</td>
+      <td class="col-blue fw-500">${s.noSO || s.id}</td>
+      <td>${_resolveRefPO(s)}</td>
       <td>${s.customerName}</td>
       <td>${s.product}</td>
       <td>${DB.fmtNum(s.tonaseTotal)} Ton</td>
@@ -2928,10 +2945,11 @@ function openSOModal(soId) {
   currentSOId = soId;
   $('modal-so-title').textContent = `Review SO: ${soId}`;
   $('modal-so-catatan').value = '';
+  const _poRef = DB.po.find(p => p.id === so.poId);
   $('modal-so-detail').innerHTML = `
     <div class="grid-2" style="gap:10px;">
-      <div class="field-box"><div class="field-lbl">No. SO</div><div class="field-val col-blue">${so.id}</div></div>
-      <div class="field-box"><div class="field-lbl">Ref. PO</div><div class="field-val">${so.poId}</div></div>
+      <div class="field-box"><div class="field-lbl">No. SO</div><div class="field-val col-blue">${so.noSO || so.id}</div></div>
+      <div class="field-box"><div class="field-lbl">Ref. PO</div><div class="field-val">${_poRef ? (_poRef.noPO || _poRef.id) : (so.poId || '—')}</div></div>
       <div class="field-box"><div class="field-lbl">Customer</div><div class="field-val">${so.customerName}</div></div>
       <div class="field-box"><div class="field-lbl">Produk</div><div class="field-val">${so.product}</div></div>
       <div class="field-box"><div class="field-lbl">Tonase</div><div class="field-val">${DB.fmtNum(so.tonaseTotal)} Ton</div></div>
@@ -2961,7 +2979,7 @@ function renderAdminDO() {
   const pendingDRs = DB.dr.filter(d => d.status === 'pending');
   $('a-dr-pending-tbody').innerHTML = pendingDRs.length ? pendingDRs.map(dr => `
     <tr>
-      <td class="col-blue fw-500">${dr.id}</td>
+      <td class="col-blue fw-500">${dr.noDR || dr.id}</td>
       <td>${dr.customerName}</td>
       <td>${dr.product||'—'}</td>
       <td>${DB.fmt(dr.tanggalKirim)}</td>
@@ -2972,7 +2990,7 @@ function renderAdminDO() {
 
   $('a-do-all-tbody').innerHTML = DB.doList.slice().reverse().map(d => `
     <tr>
-      <td class="col-blue fw-500">${d.id}</td>
+      <td class="col-blue fw-500">${d.noDO || d.id}</td>
       <td>${d.customerName}</td>
       <td>${d.noKendaraan}</td>
       <td>${d.driver}</td>
@@ -2995,7 +3013,7 @@ function openDOModal(drId) {
   $('do-tonase').value = dr.tonase;
   $('modal-do-detail').innerHTML = `
     <div class="alert alert-info mb-16"><span class="alert-icon">ℹ</span>
-    <span>DR: <strong>${dr.id}</strong> · Customer: ${dr.customerName} · ${dr.product||''} · ${DB.fmtNum(dr.tonase)} Ton · Tujuan: ${dr.tujuan}</span></div>`;
+    <span>DR: <strong>${dr.noDR || dr.id}</strong> · Customer: ${dr.customerName} · ${dr.product||''} · ${DB.fmtNum(dr.tonase)} Ton · Tujuan: ${dr.tujuan}</span></div>`;
   openModal('modal-do');
 }
 
@@ -3037,7 +3055,7 @@ function renderAdminTracking() {
     <div class="card mb-16">
       <div class="flex-between mb-16">
         <div>
-          <span class="col-blue fw-500">${d.id}</span>
+          <span class="col-blue fw-500">${d.noDO || d.id}</span>
           <span class="col-muted fs-12" style="margin-left:10px;">${d.customerName} · ${d.noKendaraan}</span>
         </div>
         <button class="btn btn-outline btn-sm" onclick="openTrackModal('${d.id}')">Update Status</button>
@@ -3059,7 +3077,7 @@ function openTrackModal(doId) {
   if (!d) { toast('Data DO tidak ditemukan.', 'error'); return; }
   currentDOId = doId;
   const el = $('track-do-id');
-  if (el) el.textContent = doId + ' — ' + (d.customerName||'');
+  if (el) el.textContent = (d.noDO || doId) + ' — ' + (d.customerName||'');
   const sel = $('track-status');
   if (sel) sel.value = d.trackStatus || 'loading';
   openModal('modal-track');
@@ -3081,10 +3099,15 @@ function submitTracking() {
 // ── admin verify ─────────────────────────────
 function renderAdminVerify() {
   const pending = DB.receipts.filter(r => r.verifyStatus === 'pending');
+  const _resolveDO = (doId) => {
+    const d = DB.doList.find(x => x.id === doId);
+    return d ? (d.noDO || doId) : (doId || '—');
+  };
+
   $('a-rcp-pending-tbody').innerHTML = pending.length ? pending.map(r => `
     <tr>
-      <td class="col-blue fw-500">${r.id}</td>
-      <td>${r.doId}</td>
+      <td class="col-blue fw-500">${r.noReceipt || r.id}</td>
+      <td>${_resolveDO(r.doId)}</td>
       <td>${r.customerName}</td>
       <td>${r.namaPenerima}</td>
       <td>${DB.fmt(r.tanggal)}</td>
@@ -3094,8 +3117,8 @@ function renderAdminVerify() {
 
   $('a-rcp-all-tbody').innerHTML = DB.receipts.slice().reverse().map(r => `
     <tr>
-      <td class="col-blue fw-500">${r.id}</td>
-      <td>${r.doId}</td>
+      <td class="col-blue fw-500">${r.noReceipt || r.id}</td>
+      <td>${_resolveDO(r.doId)}</td>
       <td>${r.customerName}</td>
       <td>${DB.fmtNum(r.timbangan)} Ton</td>
       <td>${badge(r.verifyStatus)}</td>
@@ -3117,8 +3140,8 @@ function openVerifyModal(rcpId) {
 
   $('modal-verify-detail').innerHTML = `
     <div class="grid-2" style="gap:10px;">
-      <div class="field-box"><div class="field-lbl">No. BAPB</div><div class="field-val col-blue">${r.id}</div></div>
-      <div class="field-box"><div class="field-lbl">Ref. DO</div><div class="field-val">${r.doId}</div></div>
+      <div class="field-box"><div class="field-lbl">No. BAPB</div><div class="field-val col-blue">${r.noReceipt || r.id}</div></div>
+      <div class="field-box"><div class="field-lbl">Ref. DO</div><div class="field-val">${d ? (d.noDO || d.id) : (r.doId || '—')}</div></div>
       <div class="field-box"><div class="field-lbl">Customer</div><div class="field-val">${r.customerName}</div></div>
       <div class="field-box"><div class="field-lbl">Tanggal Terima</div><div class="field-val">${DB.fmt(r.tanggal)}</div></div>
       <div class="field-box"><div class="field-lbl">Penerima</div><div class="field-val">${r.namaPenerima} (${r.jabatan})</div></div>
@@ -3155,6 +3178,17 @@ function verifyAction(action) {
 }
 
 // ── helpers ──────────────────────────────────
+
+// ── Document number display helpers ───────────────────────────────
+// Gunakan nomor dokumen jika ada, fallback ke UUID jika tidak ada
+// (terjadi saat data lokal / belum ada no_po di database)
+function docNo(obj, field) {
+  const num = obj[field];
+  if (num && num !== obj.id) return num;
+  // Jika tidak ada nomor dokumen, tampilkan UUID pendek (8 karakter pertama)
+  return obj.id ? '...' + obj.id.slice(-8) : '—';
+}
+
 function emptyState(msg) {
   return `<div class="empty-state"><div class="empty-icon">○</div><div class="empty-text">${msg}</div></div>`;
 }
@@ -3170,11 +3204,14 @@ document.addEventListener('keydown', e => {
 function mapPO(r) {
   if (!r) return r;
   return {
-    id: r.id, noPO: r.no_po,
+    id: r.id,
+    noPO: r.no_po || r.id,          // nomor dokumen untuk display
     tanggalPO: r.tanggal_po, product: r.product,
     tonase: r.tonase, harga: r.harga,
     lokasi: r.lokasi, catatan: r.catatan,
     status: r.status, soId: r.so_id,
+    // Simpan juga no_so untuk tampilan referensi
+    noSoRef: null,                    // akan di-resolve saat render
     customerId: r.customer_id, customerName: r.customer_name,
     createdAt: r.created_at
   };
@@ -3182,7 +3219,10 @@ function mapPO(r) {
 function mapSO(r) {
   if (!r) return r;
   return {
-    id: r.id, noSO: r.no_so, poId: r.po_id,
+    id: r.id,
+    noSO: r.no_so || r.id,           // nomor dokumen untuk display
+    poId: r.po_id,
+    noPORef: r.no_po_ref || null,     // no_po referensi (jika ada join)
     customerId: r.customer_id, customerName: r.customer_name,
     product: r.product,
     tonaseTotal: r.tonase_total, tonaseSisa: r.tonase_sisa,
@@ -3195,7 +3235,9 @@ function mapSO(r) {
 function mapDR(r) {
   if (!r) return r;
   return {
-    id: r.id, noDR: r.no_dr, soId: r.so_id,
+    id: r.id,
+    noDR: r.no_dr || r.id,           // nomor dokumen untuk display
+    soId: r.so_id,
     customerId: r.customer_id, customerName: r.customer_name,
     product: r.product, soTonaseTotal: r.so_tonase_total,
     tanggalKirim: r.tanggal_kirim, tonase: r.tonase,
@@ -3207,7 +3249,9 @@ function mapDR(r) {
 function mapDO(r) {
   if (!r) return r;
   return {
-    id: r.id, noDO: r.no_do, drId: r.dr_id, soId: r.so_id,
+    id: r.id,
+    noDO: r.no_do || r.id,           // nomor dokumen untuk display
+    drId: r.dr_id, soId: r.so_id,
     customerId: r.customer_id, customerName: r.customer_name,
     product: r.product, tonase: r.tonase, tujuan: r.tujuan,
     noKendaraan: r.no_kendaraan, driver: r.driver, telDriver: r.tel_driver,
@@ -3219,7 +3263,9 @@ function mapDO(r) {
 function mapRCP(r) {
   if (!r) return r;
   return {
-    id: r.id, noReceipt: r.no_receipt, invId: r.no_invoice,
+    id: r.id,
+    noReceipt: r.no_receipt || r.id,  // nomor dokumen untuk display
+    invId: r.no_invoice,
     doId: r.do_id,
     customerId: r.customer_id, customerName: r.customer_name,
     tanggal: r.tanggal, namaPenerima: r.nama_penerima,
@@ -3524,7 +3570,7 @@ function renderAdminOrders() {
       <div class="tbl-wrap"><table class="tbl">
         <thead><tr><th>No. PO</th><th>Customer</th><th>Produk</th><th>Tonase</th><th>Harga/Ton</th><th>Lokasi</th><th>Tgl PO</th><th>Status</th><th>Aksi</th></tr></thead>
         <tbody>${DB.po.slice().reverse().map(p=>`<tr>
-          <td class="col-blue fw-500">${p.id}</td><td>${p.customerName}</td><td>${p.product}</td>
+          <td class="col-blue fw-500">${p.noPO || p.id}</td><td>${p.customerName}</td><td>${p.product}</td>
           <td>${DB.fmtNum(p.tonase)} T</td><td>Rp ${DB.fmtNum(p.harga)}</td>
           <td style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${p.lokasi}</td>
           <td>${DB.fmt(p.tanggalPO)}</td><td>${badge(p.status)}</td>
@@ -3537,7 +3583,7 @@ function renderAdminOrders() {
       <div class="tbl-wrap"><table class="tbl">
         <thead><tr><th>No. SO</th><th>Ref. PO</th><th>Customer</th><th>Produk</th><th>Total Ton</th><th>Sisa Ton</th><th>Status</th><th>Catatan</th></tr></thead>
         <tbody>${DB.so.slice().reverse().map(s=>`<tr>
-          <td class="col-blue fw-500">${s.id}</td><td>${s.poId}</td><td>${s.customerName}</td>
+          <td class="col-blue fw-500">${s.noSO || s.id}</td><td>${(()=>{const _p=DB.po.find(x=>x.id===s.poId);return _p?(_p.noPO||_p.id):(s.poId||'—');})()}</td><td>${s.customerName}</td>
           <td>${s.product}</td><td>${DB.fmtNum(s.tonaseTotal)} T</td>
           <td>${DB.fmtNum(s.tonaseSisa||s.tonaseTotal)} T</td>
           <td>${badge(s.status)}</td><td style="max-width:160px;font-size:11px;">${s.catatan||'—'}</td>
@@ -3569,7 +3615,7 @@ function renderAdminDelivery() {
       <div class="tbl-wrap"><table class="tbl">
         <thead><tr><th>No. DR</th><th>Customer</th><th>Ref. SO</th><th>Produk</th><th>Tonase</th><th>Tgl Kirim</th><th>Tujuan</th><th>Status</th><th>Aksi</th></tr></thead>
         <tbody>${DB.dr.slice().reverse().map(d=>`<tr>
-          <td class="col-blue fw-500">${d.id}</td><td>${d.customerName}</td><td>${d.soId}</td>
+          <td class="col-blue fw-500">${d.noDR || d.id}</td><td>${d.customerName}</td><td>${(()=>{const _s=DB.so.find(x=>x.id===d.soId);return _s?(_s.noSO||_s.id):(d.soId||'—');})()}</td>
           <td>${d.product||'—'}</td><td>${DB.fmtNum(d.tonase)} T</td>
           <td>${DB.fmt(d.tanggalKirim)}</td>
           <td style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${d.tujuan}</td>
@@ -3583,7 +3629,7 @@ function renderAdminDelivery() {
       <div class="tbl-wrap"><table class="tbl">
         <thead><tr><th>No. DO</th><th>Customer</th><th>Kendaraan</th><th>Driver</th><th>Tonase</th><th>Terminal</th><th>Track Status</th><th>DO Status</th><th>Aksi</th></tr></thead>
         <tbody>${DB.doList.slice().reverse().map(d=>`<tr>
-          <td class="col-blue fw-500">${d.id}</td><td>${d.customerName}</td>
+          <td class="col-blue fw-500">${d.noDO || d.id}</td><td>${d.customerName}</td>
           <td>${d.noKendaraan}</td><td>${d.driver}</td>
           <td>${DB.fmtNum(d.tonase)} T</td><td>${d.terminal}</td>
           <td><span class="badge badge-info">${TRACK_MAP[d.trackStatus]||d.trackStatus}</span></td>
@@ -3638,11 +3684,7 @@ function renderAdminSignature() {
     <div class="tab-panel" id="sig-verified">
       <div class="tbl-wrap"><table class="tbl">
         <thead><tr><th>No. BAPB</th><th>Ref. DO</th><th>Customer</th><th>Penerima</th><th>Tonase Aktual</th><th>Tgl Verifikasi</th><th>Diverifikasi Oleh</th><th>No. Invoice</th></tr></thead>
-        <tbody>${verified.slice().reverse().map(r=>`<tr>
-          <td class="col-blue fw-500">${r.id}</td><td>${r.doId}</td><td>${r.customerName}</td>
-          <td>${r.namaPenerima}</td><td>${DB.fmtNum(r.timbangan)} T</td>
-          <td>${DB.fmt(r.verifiedAt)}</td><td>${r.verifiedBy||'—'}</td><td class="col-blue">${r.invId||'—'}</td>
-        </tr>`).join('')||`<tr><td colspan="8">${emptyState('Belum ada verifikasi.')}</td></tr>`}
+        <tbody>${verified.slice().reverse().map(r=>`<tr><td class='col-blue fw-500'>${r.noReceipt || r.id}</td><td>${(()=>{const _d=DB.doList.find(x=>x.id===r.doId);return _d?(_d.noDO||_d.id):(r.doId||'—');})()}</td><td>${r.customerName}</td><td>${r.namaPenerima}</td><td>${DB.fmtNum(r.timbangan)} T</td><td>${DB.fmt(r.verifiedAt)}</td><td>${r.verifiedBy||'—'}</td><td class='col-blue'>${r.invId||'—'}</td></tr>`).join('')||`<tr><td colspan="8">${emptyState('Belum ada verifikasi.')}</td></tr>`}
         </tbody>
       </table></div>
     </div>
@@ -3650,7 +3692,7 @@ function renderAdminSignature() {
       <div class="tbl-wrap"><table class="tbl">
         <thead><tr><th>No. BAPB</th><th>Ref. DO</th><th>Customer</th><th>Tonase</th><th>Tgl Terima</th><th>Status</th></tr></thead>
         <tbody>${DB.receipts.slice().reverse().map(r=>`<tr>
-          <td class="col-blue fw-500">${r.id}</td><td>${r.doId}</td><td>${r.customerName}</td>
+          <td class="col-blue fw-500">${r.noReceipt || r.id}</td><td>${(()=>{const _d=DB.doList.find(x=>x.id===r.doId);return _d?(_d.noDO||_d.id):(r.doId||'—');})()}</td><td>${r.customerName}</td>
           <td>${DB.fmtNum(r.timbangan)} T</td><td>${DB.fmt(r.tanggal)}</td><td>${badge(r.verifyStatus)}</td>
         </tr>`).join('')||`<tr><td colspan="6">${emptyState('Belum ada data.')}</td></tr>`}
         </tbody>
@@ -4373,7 +4415,7 @@ function openNotifPanel() {
   DB.so.filter(s => s.status === 'pending').forEach(s => {
     items.push({
       type: 'so', dot: 'notif-dot-so',
-      title: 'SO Menunggu Verifikasi: ' + s.id,
+      title: 'SO Menunggu Verifikasi: ' + (s.noSO || s.id),
       sub: s.customerName + ' · ' + s.product + ' · ' + DB.fmtNum(s.tonaseTotal) + ' Ton',
       time: 'Dibuat: ' + DB.fmt(s.createdAt),
       action: function() { closeNotifPanel(); adminNav('so'); }
@@ -4384,7 +4426,7 @@ function openNotifPanel() {
   DB.dr.filter(d => d.status === 'pending').forEach(d => {
     items.push({
       type: 'do', dot: 'notif-dot-do',
-      title: 'Permintaan Pengiriman: ' + d.id,
+      title: 'Permintaan Pengiriman: ' + (d.noDR || d.id),
       sub: d.customerName + ' · ' + DB.fmtNum(d.tonase) + ' Ton → ' + d.tujuan,
       time: 'Kirim: ' + DB.fmt(d.tanggalKirim),
       action: function() { closeNotifPanel(); adminNav('delivery'); }
@@ -4395,7 +4437,7 @@ function openNotifPanel() {
   DB.receipts.filter(r => r.verifyStatus === 'pending').forEach(r => {
     items.push({
       type: 'ttd', dot: 'notif-dot-ttd',
-      title: 'BAPB Menunggu Verifikasi TTD: ' + r.id,
+      title: 'BAPB Menunggu Verifikasi TTD: ' + (r.noReceipt || r.id),
       sub: r.customerName + ' · ' + r.namaPenerima + ' · ' + DB.fmtNum(r.timbangan) + ' Ton',
       time: 'Diterima: ' + DB.fmt(r.tanggal),
       action: function() { closeNotifPanel(); adminNav('signature'); }
