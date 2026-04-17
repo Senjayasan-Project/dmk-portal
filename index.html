@@ -283,10 +283,14 @@ window.addEventListener('DOMContentLoaded', () => {
   if (!_sb) {
     const b = document.createElement('div');
     b.id = 'supabase-banner';
-    b.innerHTML = `<span>⚡ Mode Offline — Data disimpan lokal (demo). Untuk koneksi Supabase, isi SUPABASE_URL & SUPABASE_ANON_KEY di konfigurasi.</span>
-      <a href="https://supabase.com/dashboard" target="_blank" style="color:#fff;text-decoration:underline;margin-left:12px;">Buka Supabase →</a>`;
-    b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#0057B8;color:#fff;font-size:11px;padding:8px 20px;display:flex;align-items:center;gap:8px;border-top:2px solid #1A73E8;';
+    b.innerHTML = '<span>⚡ <strong>Mode Offline</strong> — Data tersimpan di browser lokal (demo). ' +
+      'Edit SUPABASE_URL & SUPABASE_ANON_KEY di baris 21-22 file HTML untuk koneksi ke database.</span>' +
+      '<button onclick="document.getElementById(\'supabase-banner\').remove()" ' +
+      'style="margin-left:auto;background:transparent;border:1px solid rgba(255,255,255,.4);color:#fff;padding:2px 10px;cursor:pointer;font-size:10px;border-radius:4px;">✕</button>';
+    b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#B45309;color:#fff;font-size:11px;padding:8px 16px;display:flex;align-items:center;gap:8px;';
     document.body.appendChild(b);
+  } else {
+    console.info('[DMK] ✅ Supabase terhubung:', SUPABASE_URL);
   }
 });
 </script>
@@ -946,6 +950,30 @@ input[type="date"] { color-scheme: light; }
 }
 .notif-overlay.open { display: block; }
 @media (max-width: 640px) { .notif-panel { width: 100%; } }
+
+/* Supabase status indicator */
+.sb-status {
+  display: flex; align-items: center; gap: 5px;
+  font-size: 10px; font-weight: 600; letter-spacing: 0.5px;
+  padding: 3px 8px; border-radius: 20px;
+}
+.sb-status-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.sb-status.online  { background: rgba(15,123,78,0.12); color: #0F7B4E; }
+.sb-status.online  .sb-status-dot { background: #0F7B4E; animation: sbPulse 2s infinite; }
+.sb-status.offline { background: rgba(180,83,9,0.10); color: #B45309; }
+.sb-status.offline .sb-status-dot { background: #B45309; }
+@keyframes sbPulse {
+  0%, 100% { opacity: 1; } 50% { opacity: .4; }
+}
+.refresh-btn {
+  width: 32px; height: 32px; border: 1px solid var(--navy-border);
+  border-radius: 8px; background: transparent; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--mid); transition: all .2s;
+}
+.refresh-btn:hover { border-color: var(--blue); color: var(--blue); background: var(--blue-dim); }
+.refresh-btn.spinning svg { animation: spin 1s linear infinite; }
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 </style>
 </head>
 <body>
@@ -1342,6 +1370,18 @@ input[type="date"] { color-scheme: light; }
       </div>
     </div>
     <div class="admin-topbar-right">
+      <!-- Supabase status indicator -->
+      <div class="sb-status" id="sb-status-indicator" title="Status koneksi database">
+        <div class="sb-status-dot"></div>
+        <span id="sb-status-text">Offline</span>
+      </div>
+      <!-- Tombol refresh data dari Supabase -->
+      <button class="refresh-btn" id="refresh-btn" onclick="refreshData()" title="Refresh data dari Supabase">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
+          <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+        </svg>
+      </button>
       <div class="admin-notif" id="admin-notif-btn" onclick="openNotifPanel()" title="Lihat Notifikasi">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
         <span class="notif-badge" id="admin-notif-count" style="display:none;">0</span>
@@ -1916,6 +1956,12 @@ const DB = {
 const LS_KEY = 'dmk_portal_v1';
 
 function lsSave() {
+  // Jika Supabase aktif, data TIDAK disimpan ke localStorage
+  // localStorage hanya digunakan di mode offline (demo)
+  if (_sb) {
+    console.debug('[DMK] Supabase aktif — lsSave() dilewati, data di-persist ke Supabase');
+    return;
+  }
   try {
     const snapshot = {
       po:       DB.po,
@@ -1930,6 +1976,11 @@ function lsSave() {
 }
 
 function lsLoad() {
+  // Jika Supabase dikonfigurasi, skip localStorage — data akan di-load dari Supabase
+  if (_sb) {
+    console.debug('[DMK] Supabase aktif — lsLoad() dilewati, data akan di-fetch dari Supabase');
+    return false; // return false agar seedDemo tidak dijalankan (tidak perlu)
+  }
   try {
     const raw = localStorage.getItem(LS_KEY);
     if (!raw) return false;
@@ -1941,7 +1992,7 @@ function lsLoad() {
       DB.doList   = snap.doList   || [];
       DB.receipts = snap.receipts || [];
       DB.counters = snap.counters || { po:1, so:1, dr:1, do:1, rcp:1, inv:1 };
-      return true; // ada data tersimpan — skip seedDemo
+      return true;
     }
     return false;
   } catch(e) { console.warn('localStorage load error:', e); return false; }
@@ -2121,8 +2172,9 @@ function seedDemo() {
   DB.session = null;
 }
 
-// Muat dari localStorage dulu; jalankan seed hanya jika belum ada data
-if (!lsLoad()) {
+// Mode offline: load dari localStorage, atau jalankan seed demo
+// Mode Supabase: skip keduanya — data akan di-load saat login
+if (!_sb && !lsLoad()) {
   try { seedDemo(); lsSave(); } catch(e) { console.warn('Seed error:', e); }
 }
 
@@ -2153,11 +2205,17 @@ function selectRole(el) {
 function doLogin() { doLoginAsync(); }
 
 function doLogout() {
-  lsSave(); // pastikan semua data tersimpan sebelum logout
+  if (!_sb) lsSave(); // offline mode: simpan sebelum logout
+  // Reset in-memory data agar tidak bocor antar sesi
   DB.session = null;
+  DB.po = []; DB.so = []; DB.dr = []; DB.doList = []; DB.receipts = [];
   showPage('login');
   $('loginUser').value = '';
   $('loginPass').value = '';
+  selectedRole = 'customer';
+  document.querySelectorAll('.role-card').forEach(c => c.classList.remove('selected'));
+  const firstCard = document.querySelector('.role-card');
+  if (firstCard) firstCard.classList.add('selected');
 }
 
 // ── page router ─────────────────────────────
@@ -2236,8 +2294,11 @@ async function initCustomer() {
   showPage('customer');
   $('custNavName').textContent = DB.session.name;
   $('custNavAvatar').textContent = DB.session.avatar;
-  // Load data dari Supabase jika terhubung
+
   if (_sb) {
+    // Mode Supabase: bersihkan data lokal lama dulu, lalu fetch dari DB
+    DB.po = []; DB.so = []; DB.dr = []; DB.doList = []; DB.receipts = [];
+    toast('Memuat data dari Supabase...', 'info');
     try {
       const [pos, sos, drs, dos, rcps] = await Promise.all([
         API.getPOs(DB.session.id, 'customer'),
@@ -2246,13 +2307,19 @@ async function initCustomer() {
         API.getDOs(DB.session.id, 'customer'),
         API.getReceipts(DB.session.id, 'customer'),
       ]);
-      // Map Supabase snake_case ke camelCase yang digunakan DB local
-      DB.po       = pos.map(mapPO);
-      DB.so       = sos.map(mapSO);
-      DB.dr       = drs.map(mapDR);
-      DB.doList   = dos.map(mapDO);
-      DB.receipts = rcps.map(mapRCP);
-    } catch(e) { console.error('Supabase load error:', e); }
+      DB.po       = (pos  || []).map(mapPO);
+      DB.so       = (sos  || []).map(mapSO);
+      DB.dr       = (drs  || []).map(mapDR);
+      DB.doList   = (dos  || []).map(mapDO);
+      DB.receipts = (rcps || []).map(mapRCP);
+      console.info('[DMK] Customer data loaded from Supabase:', {
+        po: DB.po.length, so: DB.so.length, dr: DB.dr.length,
+        doList: DB.doList.length, receipts: DB.receipts.length
+      });
+    } catch(e) {
+      console.error('[DMK] Supabase load error (customer):', e);
+      toast('Gagal memuat data dari Supabase: ' + e.message, 'error');
+    }
   }
   custNav('po');
 }
@@ -2665,7 +2732,10 @@ async function initAdmin() {
   showPage('admin');
   $('adminNavName').textContent = DB.session.name;
   $('adminNavAvatar').textContent = DB.session.avatar;
+
   if (_sb) {
+    // Mode Supabase: clear data lokal, fetch semua dari DB
+    DB.po = []; DB.so = []; DB.dr = []; DB.doList = []; DB.receipts = [];
     try {
       const [pos, sos, drs, dos, rcps] = await Promise.all([
         API.getPOs(null, 'admin'),
@@ -2674,16 +2744,24 @@ async function initAdmin() {
         API.getDOs(null, 'admin'),
         API.getReceipts(null, 'admin'),
       ]);
-      DB.po       = pos.map(mapPO);
-      DB.so       = sos.map(mapSO);
-      DB.dr       = drs.map(mapDR);
-      DB.doList   = dos.map(mapDO);
-      DB.receipts = rcps.map(mapRCP);
-    } catch(e) { console.error('Supabase load error:', e); }
+      DB.po       = (pos  || []).map(mapPO);
+      DB.so       = (sos  || []).map(mapSO);
+      DB.dr       = (drs  || []).map(mapDR);
+      DB.doList   = (dos  || []).map(mapDO);
+      DB.receipts = (rcps || []).map(mapRCP);
+      console.info('[DMK] Admin data loaded from Supabase:', {
+        po: DB.po.length, so: DB.so.length, dr: DB.dr.length,
+        doList: DB.doList.length, receipts: DB.receipts.length
+      });
+    } catch(e) {
+      console.error('[DMK] Supabase load error (admin):', e);
+      toast('Gagal memuat data dari Supabase: ' + e.message, 'error');
+    }
   }
   adminNav('dashboard');
   updateAdminBadges();
-  addAuditLog('Login', `${DB.session?.name} masuk ke Admin Center`);
+  updateSbIndicator();
+  addAuditLog('Login', DB.session?.name + ' masuk ke Admin Center');
 }
 
 function adminNav(sub) {
@@ -4357,6 +4435,91 @@ function closeNotifPanel() {
   const backdrop = $('notif-backdrop');
   if (panel) panel.classList.remove('open');
   if (backdrop) backdrop.style.display = 'none';
+}
+
+
+// ════════════════════════════════════════════════════════════
+//  SUPABASE STATUS & REFRESH
+// ════════════════════════════════════════════════════════════
+
+// Update status indicator di topbar
+function updateSbIndicator() {
+  const ind = $('sb-status-indicator');
+  const txt = $('sb-status-text');
+  if (!ind || !txt) return;
+  if (_sb) {
+    ind.className = 'sb-status online';
+    txt.textContent = 'Supabase';
+  } else {
+    ind.className = 'sb-status offline';
+    txt.textContent = 'Offline';
+  }
+}
+
+// Refresh ulang data dari Supabase (atau localStorage jika offline)
+async function refreshData() {
+  const btn = $('refresh-btn');
+  if (btn) btn.classList.add('spinning');
+
+  try {
+    if (!DB.session) { toast('Harap login terlebih dahulu.', 'error'); return; }
+
+    if (_sb) {
+      // Reload dari Supabase
+      const role = DB.session.role;
+      const custId = role === 'admin' ? null : DB.session.id;
+
+      const [pos, sos, drs, dos, rcps] = await Promise.all([
+        API.getPOs(custId, role),
+        API.getSOs(custId, role),
+        API.getDRs(custId, role),
+        API.getDOs(custId, role),
+        API.getReceipts(custId, role),
+      ]);
+
+      DB.po       = (pos  || []).map(mapPO);
+      DB.so       = (sos  || []).map(mapSO);
+      DB.dr       = (drs  || []).map(mapDR);
+      DB.doList   = (dos  || []).map(mapDO);
+      DB.receipts = (rcps || []).map(mapRCP);
+
+      console.info('[DMK] Data refreshed from Supabase:', {
+        po: DB.po.length, so: DB.so.length, dr: DB.dr.length,
+        doList: DB.doList.length, receipts: DB.receipts.length
+      });
+
+      toast('Data berhasil diperbarui dari Supabase ✓', 'success');
+    } else {
+      // Offline mode: reload dari localStorage
+      lsLoad();
+      toast('Data diperbarui dari penyimpanan lokal.', 'info');
+    }
+
+    // Re-render halaman yang sedang aktif
+    if (DB.session.role === 'admin') {
+      const activePanel = document.querySelector('[id^="asub-"].active, #asub-newpage.active');
+      updateAdminBadges();
+      // Re-render dashboard jika aktif
+      if ($('a-stats')) renderAdminDash();
+      if ($('a-so-pending-tbody')) renderAdminSO();
+      if ($('a-dr-pending-tbody')) renderAdminDO();
+      if ($('a-tracking-content')) renderAdminTracking();
+      if ($('a-rcp-pending-tbody')) renderAdminVerify();
+      // Re-render new pages
+      const currentSub = document.querySelector('[id^="anl-"].active')?.id?.replace('anl-','');
+      if (currentSub && ['users','customers','orders','delivery','signature','reports'].includes(currentSub)) {
+        adminNav(currentSub);
+      }
+    } else {
+      const activeSub = document.querySelector('[id^="cnl-"].active')?.id?.replace('cnl-','');
+      if (activeSub) custNav(activeSub);
+    }
+  } catch(e) {
+    console.error('[DMK] Refresh error:', e);
+    toast('Gagal refresh: ' + e.message, 'error');
+  } finally {
+    if (btn) btn.classList.remove('spinning');
+  }
 }
 
 </script>
