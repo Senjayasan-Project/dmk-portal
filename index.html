@@ -20,7 +20,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' fonts.googleapis.com; font-src fonts.gstatic.com data:; img-src 'self' data: blob:; connect-src 'self' *.supabase.co; frame-ancestors 'none';"/>
-<script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 // ══════════════════════════════════════════════════════
 //  SUPABASE CONFIGURATION
@@ -44,9 +44,9 @@ function _initSupabase() {
   // Cek placeholder — jika URL/key masih default, gunakan mode offline
   // Hanya blokir jika masih placeholder — URL asli selalu diloloskan
   const isPlaceholder = !SUPABASE_URL || 
-                        (SUPABASE_URL.includes('slrjqrynjqftfivoarmw') && !SUPABASE_URL.includes('supabase.co')) ||
+                        (SUPABASE_URL.includes('YOUR_PROJECT_ID') && !SUPABASE_URL.includes('supabase.co')) ||
                         !SUPABASE_ANON_KEY || 
-                        (SUPABASE_ANON_KEY === 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNscmpxcnluanFmdGZpdm9hcm13Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3MTkyNDQsImV4cCI6MjA5MTI5NTI0NH0.iRKpYEyM4rEkxKM36lMTRFgP8GKDKMP8pTXfo02i4Lg');
+                        (SUPABASE_ANON_KEY === 'YOUR_ANON_PUBLIC_KEY');
   if (isPlaceholder) {
     console.info('[DMK Portal] Supabase belum dikonfigurasi → mode offline (localStorage)');
     return null;
@@ -64,12 +64,12 @@ function _initSupabase() {
   }
 }
 
-// Inisialisasi Supabase — defer dipakai, init via DOMContentLoaded
+// Inisialisasi Supabase — library CDN sudah termuat (blocking script)
 let _sb = null;
 function _tryInitSupabase() {
   try {
     if (typeof supabase === 'undefined' || typeof supabase.createClient !== 'function') {
-      console.warn('[DMK Portal] Supabase JS library belum tersedia.');
+      console.warn('[DMK Portal] Supabase JS library tidak tersedia.');
       return;
     }
     _sb = _initSupabase();
@@ -79,6 +79,8 @@ function _tryInitSupabase() {
     _sb = null;
   }
 }
+// Inisialisasi langsung (CDN sudah siap)
+(function() { _tryInitSupabase(); })();
 
 // ══════════════════════════════════════════════════════
 //  API LAYER — semua operasi DB lewat sini
@@ -95,13 +97,13 @@ const API = {
   },
 
   async login(username, password) {
-    const hash = await this._hashPw(password);
     if (!_sb) {
-      const u = DB.users.find(x => x.username === username);
-      if (!u) return { data: null, error: 'Username atau password salah' };
-      const ok = u.password === hash || u.password === password; // demo: support keduanya
-      return ok ? { data: u, error: null } : { data: null, error: 'Username atau password salah' };
+      // Offline/demo mode — bandingkan langsung (data lokal, tidak dikirim ke server)
+      const u = DB.users.find(x => x.username === username && x.password === password);
+      return u ? { data: u, error: null } : { data: null, error: 'Username atau password salah' };
     }
+    // Online mode — hash password sebelum verifikasi
+    const hash = await this._hashPw(password);
     try {
       // Query username saja, verifikasi password di client secara aman
       const { data, error } = await _sb.from('users')
@@ -311,9 +313,6 @@ const API = {
 
 // Tampilkan banner jika Supabase belum dikonfigurasi
 window.addEventListener('DOMContentLoaded', () => {
-  // Inisialisasi Supabase (defer sudah selesai saat ini)
-  _tryInitSupabase();
-
   // Skip link aksesibilitas
   const skip = document.createElement('a');
   skip.href = '#main-content';
