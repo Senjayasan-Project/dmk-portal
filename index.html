@@ -9,14 +9,14 @@ const SUPABASE_URL      = 'https://slrjqrynjqftfivoarmw.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNscmpxcnluanFmdGZpdm9hcm13Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3MTkyNDQsImV4cCI6MjA5MTI5NTI0NH0.iRKpYEyM4rEkxKM36lMTRFgP8GKDKMP8pTXfo02i4Lg';
 // Validasi dan inisialisasi Supabase client
 function _initSupabase() {
-  // Cek apakah URL dan Key sudah diisi dengan nilai yang valid
+  // Cek hanya apakah URL dan Key kosong atau masih generic placeholder
   const isPlaceholder =
     !SUPABASE_URL ||
     SUPABASE_URL.trim() === '' ||
-    SUPABASE_URL === 'https://slrjqrynjqftfivoarmw.supabase.co' ||
+    SUPABASE_URL === 'YOUR_SUPABASE_URL' ||
     !SUPABASE_ANON_KEY ||
     SUPABASE_ANON_KEY.trim() === '' ||
-    SUPABASE_ANON_KEY === 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNscmpxcnluanFmdGZpdm9hcm13Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3MTkyNDQsImV4cCI6MjA5MTI5NTI0NH0.iRKpYEyM4rEkxKM36lMTRFgP8GKDKMP8pTXfo02i4Lg';
+    SUPABASE_ANON_KEY === 'YOUR_SUPABASE_ANON_KEY';
 
   if (isPlaceholder) {
     console.info('[DMK Portal] Supabase belum dikonfigurasi → mode offline (localStorage)');
@@ -25,7 +25,11 @@ function _initSupabase() {
 
   try {
     const client = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-      auth: { persistSession: false, storage: undefined, autoRefreshToken: false, autoRefreshToken: false},
+      auth: {
+        persistSession: false,
+        storage: undefined,
+        autoRefreshToken: false
+      },
       global: { headers: { 'x-application-name': 'dmk-portal' } }
     });
     console.info('[DMK Portal] Supabase client berhasil diinisialisasi:', SUPABASE_URL);
