@@ -3282,42 +3282,62 @@ function mapRCP(r) {
 async function doLoginAsync() {
   const u = $('loginUser').value.trim();
   const p = $('loginPass').value.trim();
-  $('loginErr').style.display = 'none';
+  const errEl = $('loginErr');
+  if (errEl) errEl.style.display = 'none';
 
+  if (!u || !p) {
+    if (errEl) { errEl.textContent = 'Username dan password wajib diisi.'; errEl.style.display = 'block'; }
+    return;
+  }
+
+  // ── STEP 1: Selalu cek DB.users lokal terlebih dahulu ──
+  // Ini memastikan user demo bisa login meski Supabase aktif
+  const localUser = DB.users.find(x => x.username === u && x.password === p);
+  if (localUser) {
+    if (localUser.role !== selectedRole) {
+      if (errEl) {
+        errEl.textContent = 'Role tidak sesuai. Pilih "' + localUser.role.charAt(0).toUpperCase() + localUser.role.slice(1) + '" untuk akun ini.';
+        errEl.style.display = 'block';
+      }
+      return;
+    }
+    DB.session = localUser;
+    console.info('[DMK] Login via local DB.users:', localUser.username, localUser.role);
+    if (DB.session.role === 'customer') await initCustomer();
+    else await initAdmin();
+    return;
+  }
+
+  // ── STEP 2: Jika tidak ada di lokal DAN Supabase aktif → query Supabase ──
   if (_sb) {
-    // ── Supabase mode ──
     try {
       const { data, error } = await API.login(u, p);
       if (!data || error) {
-        const errEl = $('loginErr');
         if (errEl) { errEl.textContent = error || 'Username atau password salah.'; errEl.style.display = 'block'; }
         return;
       }
-      // Pastikan role sesuai pilihan di login page
       if (data.role !== selectedRole) {
-        const errEl = $('loginErr');
-        if (errEl) { errEl.textContent = 'Role tidak sesuai. Pilih role yang benar.'; errEl.style.display = 'block'; }
+        if (errEl) {
+          errEl.textContent = 'Role tidak sesuai. Pilih "' + data.role.charAt(0).toUpperCase() + data.role.slice(1) + '" untuk akun ini.';
+          errEl.style.display = 'block';
+        }
         return;
       }
       DB.session = {
         id: data.id, role: data.role, name: data.name,
-        company: data.company, avatar: data.avatar, username: data.username
+        company: data.company, avatar: data.avatar || data.name?.slice(0,2).toUpperCase(),
+        username: data.username
       };
+      console.info('[DMK] Login via Supabase:', data.username, data.role);
     } catch(e) {
-      console.error('[DMK] Login error:', e);
-      const errEl = $('loginErr');
+      console.error('[DMK] Login Supabase error:', e);
       if (errEl) { errEl.textContent = 'Koneksi gagal: ' + e.message; errEl.style.display = 'block'; }
       return;
     }
   } else {
-    // ── Local mode ──
-    const user = DB.users.find(x => x.username===u && x.password===p && x.role===selectedRole);
-    if (!user) {
-      const errEl = $('loginErr');
-      if (errEl) { errEl.textContent = 'Username atau password salah.'; errEl.style.display = 'block'; }
-      return;
-    }
-    DB.session = user;
+    // Offline mode, user tidak ditemukan di lokal
+    if (errEl) { errEl.textContent = 'Username atau password salah.'; errEl.style.display = 'block'; }
+    return;
   }
 
   if (DB.session.role === 'customer') await initCustomer();
@@ -4470,12 +4490,17 @@ function openNotifPanel() {
 
   panel.classList.add('open');
   if (backdrop) backdrop.style.display = 'block';
+  // Juga buka notif-overlay jika ada
+  const overlay = $('notif-overlay');
+  if (overlay) overlay.classList.add('open');
 }
 
 function closeNotifPanel() {
   const panel = $('notif-panel');
+  const overlay = $('notif-overlay');
   const backdrop = $('notif-backdrop');
   if (panel) panel.classList.remove('open');
+  if (overlay) overlay.classList.remove('open');
   if (backdrop) backdrop.style.display = 'none';
 }
 
