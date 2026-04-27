@@ -5,35 +5,26 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
-// ══════════════════════════════════════════════════════
-//  SUPABASE CONFIGURATION
-//  Ganti SUPABASE_URL dan SUPABASE_ANON_KEY dengan
-//  nilai dari: Supabase Dashboard → Settings → API
-// ══════════════════════════════════════════════════════
-// ══════════════════════════════════════════════════════════════
-//  ▼▼▼  KONFIGURASI SUPABASE — ISI DI BAWAH INI  ▼▼▼
-//  Langkah:
-//  1. Buka https://supabase.com/dashboard → pilih project Anda
-//  2. Klik Settings (icon ⚙) → API
-//  3. Copy "Project URL" → paste ke SUPABASE_URL
-//  4. Copy "anon / public" key → paste ke SUPABASE_ANON_KEY
-// ══════════════════════════════════════════════════════════════
 const SUPABASE_URL      = 'https://slrjqrynjqftfivoarmw.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNscmpxcnluanFmdGZpdm9hcm13Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3MTkyNDQsImV4cCI6MjA5MTI5NTI0NH0.iRKpYEyM4rEkxKM36lMTRFgP8GKDKMP8pTXfo02i4Lg';
 // ══════════════════════════════════════════════════════════════
 
 // Validasi dan inisialisasi Supabase client
 function _initSupabase() {
-  // Cek placeholder — jika URL/key masih default, gunakan mode offline
-  // Hanya blokir jika masih placeholder — URL asli selalu diloloskan
-  const isPlaceholder = !SUPABASE_URL || 
-                        (SUPABASE_URL.includes('https://slrjqrynjqftfivoarmw.supabase.co') && !SUPABASE_URL.includes('supabase.co')) ||
-                        !SUPABASE_ANON_KEY || 
-                        (SUPABASE_ANON_KEY === 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNscmpxcnluanFmdGZpdm9hcm13Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3MTkyNDQsImV4cCI6MjA5MTI5NTI0NH0.iRKpYEyM4rEkxKM36lMTRFgP8GKDKMP8pTXfo02i4Lg');
+  // Cek apakah URL dan Key sudah diisi dengan nilai yang valid
+  const isPlaceholder =
+    !SUPABASE_URL ||
+    SUPABASE_URL.trim() === '' ||
+    SUPABASE_URL === 'https://slrjqrynjqftfivoarmw.supabase.co' ||
+    !SUPABASE_ANON_KEY ||
+    SUPABASE_ANON_KEY.trim() === '' ||
+    SUPABASE_ANON_KEY === 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNscmpxcnluanFmdGZpdm9hcm13Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3MTkyNDQsImV4cCI6MjA5MTI5NTI0NH0.iRKpYEyM4rEkxKM36lMTRFgP8GKDKMP8pTXfo02i4Lg';
+
   if (isPlaceholder) {
     console.info('[DMK Portal] Supabase belum dikonfigurasi → mode offline (localStorage)');
     return null;
   }
+
   try {
     const client = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
       auth: { persistSession: false },
