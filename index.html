@@ -967,6 +967,43 @@ input[type="date"] { color-scheme: light; }
 .refresh-btn:hover { border-color: var(--blue); color: var(--blue); background: var(--blue-dim); }
 .refresh-btn.spinning svg { animation: spin 1s linear infinite; }
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+  /* ═══════════════════════════════════════════════════════
+   PHOTO CAPTURE / UPLOAD FEATURE — RECEIPT FORM
+   ═══════════════════════════════════════════════════════ */
+/* ── Photo Upload Section ── */
+
+/*.photo-actions{display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap}
+.photo-btn-cam{flex:1;min-width:120px;display:flex;align-items:center;justify-content:center;gap:8px;padding:12px 16px;border-radius:var(--r-md);background:var(--blue);color:#fff;font-size:13px;font-weight:700;cursor:pointer;border:none;min-height:48px;transition:var(--t-fast);font-family:inherit}
+.photo-btn-cam:active{transform:scale(0.97)}
+.photo-btn-gal{flex:1;min-width:120px;display:flex;align-items:center;justify-content:center;gap:8px;padding:12px 16px;border-radius:var(--r-md);background:var(--surface);color:var(--blue);font-size:13px;font-weight:700;cursor:pointer;border:1.5px solid var(--border-strong);min-height:48px;transition:var(--t-fast);font-family:inherit}
+.photo-btn-gal:active{transform:scale(0.97)}*/
+.photo-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
+.photo-btn-cam,.photo-btn-gal{display:flex;align-items:center;justify-content:center;gap:8px;padding:10px 14px;border-radius:var(--r-md);font-size:13px;font-weight:700;cursor:pointer;height:44px;min-height:44px;transition:var(--t-fast);font-family:inherit;white-space:nowrap;width:100%}
+.photo-btn-cam{background:var(--blue);color:#fff;border:none}
+.photo-btn-cam:hover{background:var(--blue-light)}
+.photo-btn-gal{background:var(--surface);color:var(--blue);border:1.5px solid var(--border-strong)}
+.photo-btn-gal:hover{background:var(--blue-dim)}
+.photo-input-hidden{display:none!important}
+.photo-preview-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:4px}
+@media(min-width:480px){.photo-preview-grid{grid-template-columns:repeat(4,1fr)}}
+.photo-thumb-wrap{position:relative;aspect-ratio:1;border-radius:var(--r-md);overflow:hidden;border:1.5px solid var(--border);background:var(--surface-2);cursor:pointer}
+.photo-thumb-wrap img{width:100%;height:100%;object-fit:cover;display:block}
+.photo-thumb-del{position:absolute;top:4px;right:4px;width:22px;height:22px;border-radius:50%;background:rgba(155,44,44,0.88);color:#fff;border:none;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center;cursor:pointer;line-height:1;padding:0}
+.photo-thumb-del:hover{background:var(--red)}
+.photo-thumb-num{position:absolute;bottom:3px;left:4px;font-size:10px;font-weight:700;background:rgba(0,0,0,0.5);color:#fff;padding:1px 5px;border-radius:4px}
+.photo-empty-state{padding:20px;text-align:center;border:2px dashed var(--border-strong);border-radius:var(--r-md);color:var(--text-muted);font-size:13px;display:block}
+.photo-count-badge{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:var(--r-full);background:var(--blue-dim);color:var(--blue);font-size:11px;font-weight:700;margin-bottom:10px}
+.photo-count-badge.has-photos{background:var(--green-bg);color:var(--green)}
+.photo-lightbox{position:fixed;inset:0;z-index:999;background:rgba(0,0,0,0.93);display:none;align-items:center;justify-content:center;flex-direction:column;padding:16px}
+.photo-lightbox.open{display:flex}
+.photo-lightbox img{max-width:100%;max-height:80dvh;object-fit:contain;border-radius:var(--r-md)}
+.photo-lightbox-close{position:absolute;top:calc(16px + var(--safe-top));right:16px;width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,0.15);color:#fff;border:none;font-size:20px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-family:inherit}
+.photo-lightbox-nav{display:flex;align-items:center;gap:16px;margin-top:12px}
+.photo-lightbox-nav-btn{width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,0.15);color:#fff;border:none;font-size:18px;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background .15s;font-family:inherit}
+.photo-lightbox-nav-btn:hover{background:rgba(255,255,255,0.28)}
+.photo-lightbox-caption{font-size:12px;color:rgba(255,255,255,0.6);text-align:center}
+  
 </style>
 </head>
 <body>
@@ -1671,6 +1708,32 @@ input[type="date"] { color-scheme: light; }
     <div class="form-group mt-16">
       <label class="form-label">Catatan Admin</label>
       <textarea class="form-textarea" id="modal-so-catatan" placeholder="Alasan approve / reject..."></textarea>
+       <!--[FOTO_HTML_START]-->
+              <div class="form-group">
+    <label class="form-label">Foto Barang Diterima <span style="color:var(--text-muted);font-weight:400;font-size:10px;">(Opsional · maks. 5 foto)</span></label>
+    <div class="photo-actions">
+      <button type="button" class="photo-btn-cam" onclick="photoCapture('camera')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+        Ambil Foto
+      </button>
+      <button type="button" class="photo-btn-gal" onclick="photoCapture('gallery')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+        Pilih Galeri
+      </button>
+    </div>
+    <input class="photo-input-hidden" type="file" id="photo-input-cam" accept="image/*" capture="environment" multiple onchange="onPhotoSelected(this)"/>
+    <input class="photo-input-hidden" type="file" id="photo-input-gal" accept="image/*" multiple onchange="onPhotoSelected(this)"/>
+    <div class="photo-count-badge" id="photo-count-badge">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+      <span id="photo-count-text">0 foto dipilih</span>
+    </div>
+    <div class="photo-preview-grid" id="photo-preview-grid"></div>
+    <div class="photo-empty-state" id="photo-empty-state">
+      <div style="font-size:28px;margin-bottom:8px;opacity:0.3">📷</div>
+      <div>Belum ada foto. Ambil foto atau pilih dari galeri.</div>
+    </div>
+  </div>
+ <!--[FOTO_HTML_END]-->
     </div>
     <div class="btn-group">
       <button class="btn btn-success" onclick="soAction('approve')">Approve SO</button>
@@ -4582,6 +4645,276 @@ async function refreshData() {
   }
 }
 
+    <script id="foto-js">
+// ════════════════════════════════════════════════════════════
+//  PHOTO CAPTURE / UPLOAD — PENERIMAAN BARANG
+//  Mendukung: kamera langsung, galeri, multiple foto (maks 5)
+//  Kompresi otomatis ke JPEG 72%, resize maks 1200px
+//  Disimpan sebagai base64 di receipt.fotoUrls
+// ════════════════════════════════════════════════════════════
+
+let _rcpPhotos = [];       // Array {dataUrl, name, size, w, h}
+let _lbPhotos  = [];       // Array untuk lightbox (bisa dari review/verify)
+let _lbIdx     = 0;        // Index foto aktif di lightbox
+const PHOTO_MAX = 5;
+
+// ── Buka input file sesuai sumber ────────────────────────────
+function photoCapture(source) {
+  if (_rcpPhotos.length >= PHOTO_MAX) {
+    toast('Maksimal ' + PHOTO_MAX + ' foto per penerimaan.', 'error');
+    return;
+  }
+  const el = source === 'camera' ? $('photo-input-cam') : $('photo-input-gal');
+  if (el) el.click();
+}
+
+// ── Proses file yang dipilih ──────────────────────────────────
+function onPhotoSelected(input) {
+  const files = Array.from(input.files || []);
+  if (!files.length) return;
+
+  const remaining = PHOTO_MAX - _rcpPhotos.length;
+  const toProcess = files.filter(f => f.type.startsWith('image/')).slice(0, remaining);
+
+  if (files.length > remaining) {
+    toast('Hanya ' + remaining + ' foto lagi yang bisa ditambahkan.', 'error');
+  }
+
+  if (!toProcess.length) { input.value = ''; return; }
+
+  let done = 0;
+  toProcess.forEach(function(file) {
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      const img = new Image();
+      img.onload = function() {
+        // Resize maks 1200px, compress JPEG 72%
+        const MAX = 1200;
+        let w = img.width, h = img.height;
+        if (w > MAX || h > MAX) {
+          if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
+          else       { w = Math.round(w * MAX / h); h = MAX; }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.72);
+        _rcpPhotos.push({
+          dataUrl,
+          name: file.name || ('foto_' + Date.now() + '.jpg'),
+          size: Math.round(dataUrl.length * 0.75 / 1024),
+          w, h
+        });
+        done++;
+        if (done === toProcess.length) {
+          renderPhotoPreview();
+          toast(toProcess.length + ' foto berhasil ditambahkan.', 'success');
+        }
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+  input.value = '';
+}
+
+// ── Render preview grid ───────────────────────────────────────
+function renderPhotoPreview() {
+  const grid     = $('photo-preview-grid');
+  const emptyEl  = $('photo-empty-state');
+  const badge    = $('photo-count-badge');
+  const countTxt = $('photo-count-text');
+  if (!grid) return;
+
+  const n = _rcpPhotos.length;
+  if (countTxt) {
+    countTxt.textContent = n + ' foto dipilih' + (n >= PHOTO_MAX ? ' (maks tercapai)' : '');
+  }
+  if (badge) {
+    badge.className = 'photo-count-badge' + (n > 0 ? ' has-photos' : '');
+  }
+  if (emptyEl) emptyEl.style.display = n > 0 ? 'none' : 'block';
+
+  grid.innerHTML = _rcpPhotos.map(function(p, i) {
+    return '<div class="photo-thumb-wrap" onclick="photoLightboxOpen(null,' + i + ')">' +
+      '<img src="' + p.dataUrl + '" alt="Foto ' + (i+1) + '" loading="lazy"/>' +
+      '<button class="photo-thumb-del" onclick="event.stopPropagation();deletePhoto(' + i + ')" title="Hapus">✕</button>' +
+      '<span class="photo-thumb-num">' + (i+1) + '/' + _rcpPhotos.length + '</span>' +
+    '</div>';
+  }).join('');
+}
+
+// ── Hapus foto individual ─────────────────────────────────────
+function deletePhoto(idx) {
+  _rcpPhotos.splice(idx, 1);
+  renderPhotoPreview();
+  toast('Foto dihapus.', 'info');
+}
+
+// ── Lightbox: buka foto ───────────────────────────────────────
+// photos: array dataUrl (jika null, gunakan _rcpPhotos)
+function photoLightboxOpen(photos, idx) {
+  _lbPhotos = photos ? photos : _rcpPhotos.map(function(p) { return p.dataUrl; });
+  _lbIdx    = idx || 0;
+  _renderLightbox();
+  $('photo-lightbox').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function _renderLightbox() {
+  const img     = $('photo-lightbox-img');
+  const caption = $('photo-lightbox-caption');
+  const prev    = $('photo-lb-prev');
+  const next    = $('photo-lb-next');
+  if (!img || !caption) return;
+  img.src = _lbPhotos[_lbIdx] || '';
+  caption.textContent = 'Foto ' + (_lbIdx + 1) + ' dari ' + _lbPhotos.length;
+  if (prev) prev.style.visibility = _lbIdx > 0 ? 'visible' : 'hidden';
+  if (next) next.style.visibility = _lbIdx < _lbPhotos.length - 1 ? 'visible' : 'hidden';
+}
+
+function photoLightboxNav(dir) {
+  _lbIdx = Math.max(0, Math.min(_lbPhotos.length - 1, _lbIdx + dir));
+  _renderLightbox();
+}
+
+function photoLightboxClose() {
+  var lb = $('photo-lightbox');
+  if (lb) lb.classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+// ── Reset saat form dibuka ────────────────────────────────────
+var _photoOrigOpenReceiptForm = openReceiptForm;
+openReceiptForm = function() {
+  _photoOrigOpenReceiptForm();
+  _rcpPhotos = [];
+  renderPhotoPreview();
+};
+
+// ── Patch submitReceipt: sisipkan foto ke payload ─────────────
+var _photoOrigSubmitReceipt = submitReceipt;
+submitReceipt = function() {
+  // Simpan foto sementara sebelum submit
+  window._photoSubmitUrls = _rcpPhotos.map(function(p) { return p.dataUrl; });
+  _photoOrigSubmitReceipt();
+};
+
+// ── Patch DB.createReceipt: lampirkan foto ────────────────────
+var _photoOrigDBCreate = DB.createReceipt.bind(DB);
+DB.createReceipt = function(data, sigDataUrl) {
+  var receipt = _photoOrigDBCreate(data, sigDataUrl);
+  receipt.fotoUrls = window._photoSubmitUrls || [];
+  window._photoSubmitUrls = [];
+  return receipt;
+};
+
+// ── Patch API.createReceipt: kirim foto ke Supabase ──────────
+var _photoOrigAPICreate = API.createReceipt.bind(API);
+API.createReceipt = async function(payload, sigDataUrl) {
+  var photos = window._photoSubmitUrls || [];
+  var payloadExt = Object.assign({}, payload, {
+    foto_urls: JSON.stringify(photos)
+  });
+  return _photoOrigAPICreate(payloadExt, sigDataUrl);
+};
+
+// ── Patch mapRCP: baca foto dari Supabase row ─────────────────
+var _photoOrigMapRCP = mapRCP;
+mapRCP = function(r) {
+  var obj = _photoOrigMapRCP(r);
+  if (obj && r && r.foto_urls) {
+    try {
+      obj.fotoUrls = typeof r.foto_urls === 'string' ? JSON.parse(r.foto_urls) : (r.foto_urls || []);
+    } catch(e) { obj.fotoUrls = []; }
+  }
+  return obj;
+};
+
+// ── Patch openVerifyModal: tampilkan foto di modal ────────────
+var _photoOrigOpenVerify = openVerifyModal;
+openVerifyModal = function(rcpId) {
+  _photoOrigOpenVerify(rcpId);
+  var r = DB.receipts.find(function(x) { return x.id === rcpId; });
+  if (!r) return;
+  var detailEl = $('modal-verify-detail');
+  if (!detailEl) return;
+  var photos = r.fotoUrls || [];
+  var wrap = document.createElement('div');
+  wrap.style.marginTop = '12px';
+  if (photos.length > 0) {
+    wrap.innerHTML =
+      '<div class="form-label" style="margin-bottom:8px;display:flex;align-items:center;gap:6px;">' +
+        '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>' +
+        'Foto Penerimaan (' + photos.length + ' foto)' +
+      '</div>' +
+      '<div class="photo-preview-grid">' +
+        photos.map(function(url, i) {
+          return '<div class="photo-thumb-wrap" onclick="_verifyPhotoOpen(' + i + ',' + JSON.stringify(photos).replace(/</g,'\\u003c') + ')">' +
+            '<img src="' + url + '" alt="Foto ' + (i+1) + '" loading="lazy"/>' +
+            '<span class="photo-thumb-num">' + (i+1) + '</span>' +
+          '</div>';
+        }).join('') +
+      '</div>';
+  } else {
+    wrap.innerHTML = '<div style="font-size:12px;color:var(--text-muted);display:flex;align-items:center;gap:6px;">' +
+      '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>' +
+      'Tidak ada foto yang dilampirkan.</div>';
+  }
+  detailEl.appendChild(wrap);
+
+  // Store for lightbox
+  window._verifyPhotos = photos;
+};
+
+function _verifyPhotoOpen(idx, photos) {
+  photoLightboxOpen(photos || window._verifyPhotos || [], idx);
+}
+
+// ── Tambahkan indikator foto di daftar penerimaan customer ───
+// Override renderReceiptList untuk tampilkan badge foto
+var _photoOrigRenderRcpList = renderReceiptList;
+renderReceiptList = function() {
+  var rows = DB.myReceipts().slice().reverse();
+  var el   = $('c-rcp-list');
+  if (!el) { _photoOrigRenderRcpList(); return; }
+  el.innerHTML = rows.length ? rows.map(function(r) {
+    var d     = DB.doList.find(function(x) { return x.id === r.doId; });
+    var refDO = d ? (d.noDO||d.id) : (r.doId||'—');
+    var nFoto = (r.fotoUrls || []).length;
+    var fotoBadge = nFoto > 0
+      ? '<span style="font-size:10px;background:var(--blue-dim);color:var(--blue);padding:1px 6px;border-radius:var(--r-full);font-weight:700;margin-left:4px;">📷 ' + nFoto + '</span>'
+      : '';
+    return '<div class="list-item">' +
+      '<div class="list-icon ' + (r.verifyStatus==='verified'?'green':r.verifyStatus==='rejected'?'red':'amber') + '">' +
+        '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>' +
+      '</div>' +
+      '<div class="list-body">' +
+        '<div class="list-title">' + (r.noReceipt||r.id) + fotoBadge + '</div>' +
+        '<div class="list-sub">Ref. DO: ' + refDO + ' · ' + DB.fmtNum(r.timbangan) + ' Ton</div>' +
+        '<div class="list-sub">' + r.namaPenerima + ' · ' + DB.fmt(r.tanggal) + '</div>' +
+      '</div>' +
+      '<div class="list-right">' + badge(r.verifyStatus) + '</div>' +
+    '</div>';
+  }).join('') : emptyState('Belum ada data penerimaan');
+};
+
+// ── Swipe lightbox di mobile ──────────────────────────────────
+(function() {
+  var startX = 0;
+  document.addEventListener('touchstart', function(e) {
+    var lb = $('photo-lightbox');
+    if (lb && lb.classList.contains('open')) startX = e.touches[0].clientX;
+  }, { passive: true });
+  document.addEventListener('touchend', function(e) {
+    var lb = $('photo-lightbox');
+    if (!lb || !lb.classList.contains('open')) return;
+    var diff = startX - e.changedTouches[0].clientX;
+    if (Math.abs(diff) > 50) photoLightboxNav(diff > 0 ? 1 : -1);
+  }, { passive: true });
+})();
+
+</script>
 </script>
 </body>
 </html>
