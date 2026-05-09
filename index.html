@@ -994,6 +994,33 @@ input[type="date"] { color-scheme: light; }
 .photo-lightbox-nav-btn:hover{background:rgba(255,255,255,0.28)}
 .photo-lightbox-caption{font-size:12px;color:rgba(255,255,255,0.6);text-align:center}
 </style>
+
+<!-- Design Update: Modern Login -->
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+<style type="text/tailwindcss">
+  @theme inline {
+    --color-primary: #0057B8;
+    --color-primary-hover: #004494;
+    --font-sans: 'DM Sans', sans-serif;
+  }
+  /* Override existing style only for page-login */
+  #page-login {
+    @apply min-h-screen bg-white flex flex-col lg:flex-row !important;
+    padding: 0 !important;
+    display: none;
+  }
+  #page-login.active {
+    display: flex !important;
+  }
+  .role-btn-active {
+    @apply border-primary bg-primary/5 text-primary !important;
+  }
+  .role-btn-inactive {
+    @apply border-slate-100 text-slate-400 !important;
+  }
+</style>
+
 </head>
 <body>
 
@@ -2277,11 +2304,24 @@ let sigActive     = false;
 // ── login / logout ──────────────────────────
 let selectedRole = 'customer';
 
+
 function selectRole(el) {
-  document.querySelectorAll('.role-card').forEach(c => c.classList.remove('selected'));
-  el.classList.add('selected');
-  selectedRole = el.dataset.role;
+  userRole = el.getAttribute('data-role');
+  const allBtns = document.querySelectorAll('.role-btn');
+  allBtns.forEach(btn => {
+    btn.classList.remove('role-btn-active');
+    btn.classList.add('role-btn-inactive');
+  });
+  el.classList.add('role-btn-active');
+  el.classList.remove('role-btn-inactive');
+  if(window.lucide) lucide.createIcons();
 }
+
+// Global initialization for icons
+document.addEventListener('DOMContentLoaded', () => {
+  if(window.lucide) lucide.createIcons();
+});
+
 
 // doLogin now delegates to doLoginAsync (defined below with Supabase support)
 function doLogin() { doLoginAsync(); }
